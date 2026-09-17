@@ -1,25 +1,20 @@
 # Second machine (loopback demo)
 
-This process binds **127.0.0.1:8000** by default. Another host cannot reach it unless you override the bind or tunnel.
+This process binds **127.0.0.1:8000** by default. Another host cannot reach it unless you override the bind or tunnel. Windows-first start is in the README (`.\scripts\start.ps1` / `.\scripts\stop.ps1` or `python -m src.app`).
 
 ## On this machine
 
-```bash
-cp .env.example .env   # set GATEWAY_TOKEN; leave XAI_API_KEY empty unless you want grok-4.6
+```powershell
+copy .env.example .env   # set GATEWAY_TOKEN; leave XAI_API_KEY empty unless you want grok-4.6
 # FAIL_CLOSED=0 keeps the local heuristic when the key is missing (not grok quality).
 # FAIL_CLOSED=1 denies undecided rows instead of using local-fallback as if it were grok.
-make run
-curl -sS http://127.0.0.1:8000/health
-curl -sS http://127.0.0.1:8000/ready
-```
-
-Windows PowerShell (same bind):
-
-```powershell
 .\scripts\start.ps1
-# other window:
+curl.exe -sS http://127.0.0.1:8000/health
+curl.exe -sS http://127.0.0.1:8000/ready
 .\scripts\stop.ps1
 ```
+
+macOS/Linux: `cp .env.example .env` then `make run` or `python3 -m src.app`.
 
 Mutating routes need:
 
