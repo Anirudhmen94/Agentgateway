@@ -63,7 +63,8 @@
     }
     textarea { min-height: 72px; resize: vertical; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .samples { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+    .samples, .demo-steps { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+    .hint { color: var(--muted); font-size: 0.88rem; margin: 0 0 4px; }
     button {
       font-family: var(--mono);
       font-size: 0.75rem;
@@ -76,31 +77,64 @@
     }
     button.primary { background: var(--accent); color: #1a160f; border-color: var(--accent); font-weight: 600; }
     button:hover { filter: brightness(1.08); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; filter: none; }
     .verdict {
       margin-top: 14px;
-      padding: 14px;
+      padding: 16px;
       border-radius: 8px;
       border: 1px solid var(--line);
       min-height: 120px;
+      background: #161410;
     }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.04em; }
-    .allow { background: #1d3218; color: var(--allow); }
-    .deny { background: #3a1b17; color: var(--deny); }
-    .approve { background: #3a2e14; color: var(--approve); }
-    .pending { background: #3a2e14; color: var(--approve); }
-    .feed { font-family: var(--mono); font-size: 0.72rem; max-height: 420px; overflow: auto; line-height: 1.45; }
-    .feed div { border-bottom: 1px dashed var(--line); padding: 8px 0; }
+    .verdict.empty { color: var(--muted); }
+    .verdict.error {
+      border-color: var(--deny);
+      background: #2a1614;
+      color: var(--ink);
+    }
+    .verdict.card-allow {
+      border-color: var(--allow);
+      background: #1d3218;
+    }
+    .verdict.card-deny {
+      border-color: var(--deny);
+      background: #3a1b17;
+    }
+    .verdict.card-pending {
+      border-color: var(--approve);
+      background: #3a2e14;
+    }
+    .verdict h3 {
+      margin: 4px 0 8px;
+      font-size: 1.15rem;
+      letter-spacing: 0.02em;
+    }
+    .verdict.card-allow h3 { color: var(--allow); }
+    .verdict.card-deny h3 { color: var(--deny); }
+    .verdict.card-pending h3 { color: var(--approve); }
+    .verdict .copy { margin: 0 0 10px; line-height: 1.4; }
+    .pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.04em; background: #241f19; border: 1px solid var(--line); }
+    .allow { background: #1d3218; color: var(--allow); border-color: #2e4a28; }
+    .deny { background: #3a1b17; color: var(--deny); border-color: #5a2a24; }
+    .approve, .pending { background: #3a2e14; color: var(--approve); border-color: #5a4920; }
+    .feed { font-family: var(--mono); font-size: 0.72rem; max-height: 520px; overflow: auto; line-height: 1.45; }
+    .feed .empty-feed { color: var(--muted); padding: 8px 0; border: 0; }
+    .feed article { border-bottom: 1px dashed var(--line); padding: 10px 0; }
+    .feed .reason { color: var(--ink); margin-top: 4px; }
+    .feed .conf { color: var(--muted); }
     .purpose { color: var(--muted); font-size: 0.92rem; margin: 0 0 8px; }
-    .revoker { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+    .revoker { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+    .token-missing { outline: 1px solid var(--deny); }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>Agent Trust Gateway</h1>
-      <p>Policy first, model second. allow may execute; deny and approve (pending) must not.</p>
+      <p>Policy first, model second. Only <strong>allow</strong> may execute. <strong>deny</strong> and <strong>approve</strong> (pending) are hard stops.</p>
     </div>
-    <div class="meta">POST /v1/check · Bearer token · bind 127.0.0.1</div>
+    <div class="meta">POST /v1/check · Authorization: Bearer · bind 127.0.0.1</div>
   </header>
   <main>
     <section>
@@ -116,17 +150,20 @@
           <select id="tool"></select>
         </div>
       </div>
-      <label>Demo token (GATEWAY_TOKEN)</label>
-      <input id="token" type="password" autocomplete="off" placeholder="same value as .env GATEWAY_TOKEN" />
+      <label for="token">GATEWAY_TOKEN</label>
+      <input id="token" type="password" autocomplete="off" placeholder="paste GATEWAY_TOKEN from .env — required to Check" />
       <label>Session id</label>
       <input id="session" value="sess-live-1" />
       <label>Session context</label>
       <textarea id="context">Open the newest billing ticket and classify severity.</textarea>
       <label>Args (JSON)</label>
       <textarea id="args">{ "ticket_id": "TCK-1042" }</textarea>
+      <p class="hint">Samples load the form and run Check.</p>
       <div class="samples" id="samples"></div>
-      <button class="primary" id="submit">Check in real time</button>
-      <div class="verdict" id="result">Waiting for a request.</div>
+      <p class="hint">Demo strip — walk these in order.</p>
+      <div class="demo-steps" id="demo-strip"></div>
+      <button class="primary" id="submit">Check</button>
+      <div class="verdict empty" id="result" role="status">No decision yet. Paste GATEWAY_TOKEN, then Check or pick a sample.</div>
       <div class="revoker">
         <button id="revoke">Revoke this agent</button>
         <button id="unrevoke">Restore agent</button>
@@ -135,10 +172,21 @@
     </section>
     <section>
       <h2>Live audit</h2>
-      <div class="feed" id="feed"></div>
+      <p class="hint">SSE <code>event: audit</code> — verdict, gate, reason, and confidence when the gateway sends them.</p>
+      <div class="feed" id="feed"><div class="empty-feed" id="feed-empty">Waiting for audit events…</div></div>
     </section>
   </main>
   <script>
+    const TOKEN_KEY = "atg_gateway_token";
+    const labels = {
+      benign: "Benign",
+      prompt_injection: "Prompt injection",
+      scope_creep: "Scope creep",
+      data_exfiltration: "Data exfiltration",
+      credential_misuse: "Credential misuse",
+      approve_pending: "Approve / pending"
+    };
+
     const samples = {
       benign: {
         agent_id: "support-triage",
@@ -173,34 +221,139 @@
     };
 
     let agents = [];
+    let checkInFlight = false;
     const $ = (id) => document.getElementById(id);
     let auditSource = null;
+    const feed = $("feed");
+
+    function esc(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[ch]));
+    }
 
     function tokenValue() {
       return ($("token").value || "").trim();
+    }
+
+    function persistToken() {
+      localStorage.setItem(TOKEN_KEY, $("token").value);
     }
 
     function authHeaders(json) {
       const headers = {};
       if (json) headers["Content-Type"] = "application/json";
       const tok = tokenValue();
-      if (tok) {
-        headers["Authorization"] = "Bearer " + tok;
-        headers["X-Gateway-Token"] = tok;
-      }
+      if (tok) headers["Authorization"] = "Bearer " + tok;
       return headers;
+    }
+
+    function setCheckBusy(busy) {
+      checkInFlight = busy;
+      $("submit").disabled = busy;
+      $("submit").textContent = busy ? "Checking…" : "Check";
+    }
+
+    function renderEmpty(message) {
+      $("result").className = "verdict empty";
+      $("result").textContent = message;
+    }
+
+    function renderError(message) {
+      $("result").className = "verdict error";
+      $("result").innerHTML = `<h3>Cannot check</h3><p class="copy">${esc(message)}</p>`;
+    }
+
+    function promptForToken(message) {
+      $("token").classList.add("token-missing");
+      renderError(message || "401: paste GATEWAY_TOKEN from .env into the GATEWAY_TOKEN field, then Check again.");
+    }
+
+    function isHardPending(data) {
+      const verdict = String(data.verdict || "").toLowerCase();
+      if (verdict === "approve" || verdict === "pending") return true;
+      if (data.pending === true) return true;
+      if (verdict === "approve" && data.execution_allowed === false) return true;
+      return false;
+    }
+
+    function isAllowCard(data) {
+      if (isHardPending(data)) return false;
+      return data.verdict === "allow" && data.execution_allowed === true;
+    }
+
+    function renderDecision(data) {
+      if (isHardPending(data)) {
+        $("result").className = "verdict card-pending";
+        $("result").innerHTML = `
+          <h3>PENDING — do not execute</h3>
+          <p class="copy">Hard gate. Runtime must not proceed. This is not an allow. Queue for a human until an operator ACK. <code>pending: true</code>, <code>execution_allowed: false</code>.</p>
+          <div class="pills">
+            <span class="pill approve">${esc(data.verdict || "approve")}</span>
+            <span class="pill pending">pending</span>
+            <span class="pill">${esc(data.category || "—")}</span>
+            <span class="pill approve">do not execute</span>
+          </div>
+          <div class="meta">${esc(data.deciding_layer || "—")} · ${esc(Number(data.latency_ms).toFixed(1))} ms${data.confidence == null ? "" : " · conf " + esc(data.confidence)}</div>
+          <p class="copy">${esc(data.reasoning || data.reason || "")}</p>
+          <div class="meta">${esc(data.model || "policy only")} ${esc(data.timestamp_utc || "")}</div>
+        `;
+        return;
+      }
+      if (isAllowCard(data)) {
+        $("result").className = "verdict card-allow";
+        $("result").innerHTML = `
+          <h3>ALLOW — execution permitted</h3>
+          <p class="copy">In-scope use of a granted tool. The runtime may execute this call.</p>
+          <div class="pills">
+            <span class="pill allow">allow</span>
+            <span class="pill">${esc(data.category || "—")}</span>
+            <span class="pill allow">execution allowed</span>
+          </div>
+          <div class="meta">${esc(data.deciding_layer || "—")} · ${esc(Number(data.latency_ms).toFixed(1))} ms${data.confidence == null ? "" : " · conf " + esc(data.confidence)}</div>
+          <p class="copy">${esc(data.reasoning || data.reason || "")}</p>
+          <div class="meta">${esc(data.model || "policy only")} ${esc(data.timestamp_utc || "")}</div>
+        `;
+        return;
+      }
+      $("result").className = "verdict card-deny";
+      $("result").innerHTML = `
+        <h3>DENY — do not execute</h3>
+        <p class="copy">Blocked. Runtime must not proceed.</p>
+        <div class="pills">
+          <span class="pill deny">${esc(data.verdict || "deny")}</span>
+          <span class="pill">${esc(data.category || "—")}</span>
+          <span class="pill deny">blocked — do not execute</span>
+        </div>
+        <div class="meta">${esc(data.deciding_layer || "—")} · ${esc(Number(data.latency_ms).toFixed(1))} ms${data.confidence == null ? "" : " · conf " + esc(data.confidence)}</div>
+        <p class="copy">${esc(data.reasoning || data.reason || "")}</p>
+        <div class="meta">${esc(data.model || "policy only")} ${esc(data.timestamp_utc || "")}</div>
+      `;
     }
 
     function connectAudit() {
       if (auditSource) auditSource.close();
-      const tok = encodeURIComponent(tokenValue());
-      const url = tokenValue() ? "/v1/audit/stream?token=" + tok : "/v1/audit/stream";
-      auditSource = new EventSource(url);
+      const tok = tokenValue();
+      if (!tok) {
+        return;
+      }
+      auditSource = new EventSource("/v1/audit/stream?token=" + encodeURIComponent(tok));
       auditSource.addEventListener("audit", (ev) => {
         const row = JSON.parse(ev.data);
-        const el = document.createElement("div");
-        const gate = row.pending ? "pending" : (row.execution_allowed ? "execute" : "blocked");
-        el.innerHTML = `<strong>${row.verdict}</strong> ${row.agent_id} ${row.tool} · ${gate} · ${row.deciding_layer} · ${row.category || row.rule_id}<div>${row.reason || ""} ${row.confidence == null ? "" : "· conf " + row.confidence}</div>`;
+        const empty = $("feed-empty");
+        if (empty) empty.remove();
+        const pending = isHardPending(row);
+        const gate = pending ? "PENDING — do not execute" : (row.execution_allowed ? "execute" : "blocked");
+        const tone = pending ? "approve" : (row.execution_allowed ? "allow" : "deny");
+        const el = document.createElement("article");
+        const reason = row.reason || row.reasoning || "";
+        const conf = row.confidence == null ? "" : `<div class="conf">confidence ${esc(row.confidence)}</div>`;
+        el.innerHTML = `
+          <div><span class="pill ${tone}">${esc(row.verdict)}</span> ${esc(row.agent_id)} ${esc(row.tool)}</div>
+          <div>${esc(gate)} · ${esc(row.deciding_layer || "—")} · ${esc(row.category || row.rule_id || "—")}</div>
+          ${reason ? `<div class="reason">${esc(reason)}</div>` : ""}
+          ${conf}
+        `;
         feed.prepend(el);
       });
     }
@@ -209,13 +362,32 @@
       const agent = agents.find(a => a.id === $("agent").value);
       if (!agent) return;
       const tools = [...agent.allowed_tools, ...agent.escalation];
-      $("tool").innerHTML = tools.map(t => `<option>${t}</option>`).join("");
+      $("tool").innerHTML = tools.map(t => `<option>${esc(t)}</option>`).join("");
       $("purpose").textContent = agent.declared_purpose;
       $("revoked-flag").textContent = agent.revoked ? "REVOKED" : "";
     }
 
+    function approveSampleFromAgents() {
+      if (!agents.length) return null;
+      const preferred = "ticket.refund";
+      let agent = agents.find(a => (a.escalation || []).includes(preferred));
+      let tool = preferred;
+      if (!agent) {
+        agent = agents.find(a => (a.escalation || []).length);
+        if (!agent) return null;
+        tool = agent.escalation[0];
+      }
+      return {
+        agent_id: agent.id,
+        tool,
+        session_context: "Customer asked for a refund on ticket TCK-1042 after a billing error.",
+        args: { ticket_id: "TCK-1042", amount: 48.00 }
+      };
+    }
+
     function applySample(key) {
-      const s = samples[key];
+      const s = key === "approve_pending" ? approveSampleFromAgents() : samples[key];
+      if (!s) return;
       $("agent").value = s.agent_id;
       fillTools();
       $("tool").value = s.tool;
@@ -223,29 +395,56 @@
       $("args").value = JSON.stringify(s.args, null, 2);
     }
 
-    async function refreshAgents() {
-      const res = await fetch("/v1/agents");
-      const data = await res.json();
-      agents = data.agents;
-      const current = $("agent").value;
-      $("agent").innerHTML = agents.map(a => `<option value="${a.id}">${a.name}</option>`).join("");
-      if (current) $("agent").value = current;
-      fillTools();
+    function renderSampleButtons() {
+      const keys = Object.keys(samples);
+      if (approveSampleFromAgents()) keys.push("approve_pending");
+      $("samples").innerHTML = keys.map(k =>
+        `<button type="button" data-sample="${k}">${labels[k] || k}</button>`
+      ).join("");
     }
 
-    $("samples").innerHTML = Object.keys(samples).map(k =>
-      `<button type="button" data-sample="${k}">${k.replace("_", " ")}</button>`
-    ).join("");
-    $("samples").addEventListener("click", (e) => {
-      const key = e.target.dataset.sample;
-      if (key) applySample(key);
-    });
-    $("agent").addEventListener("change", fillTools);
+    function renderDemoStrip() {
+      const hasApprove = !!approveSampleFromAgents();
+      const steps = [
+        `<button type="button" data-demo="benign">1 Benign</button>`,
+        `<button type="button" data-demo="scope_creep">2 Scope creep</button>`
+      ];
+      if (hasApprove) {
+        steps.push(`<button type="button" data-demo="approve_pending">3 Approve / pending</button>`);
+        steps.push(`<button type="button" data-demo="revoke_recheck">4 Revoke &amp; recheck</button>`);
+      } else {
+        steps.push(`<button type="button" data-demo="revoke_recheck">3 Revoke &amp; recheck</button>`);
+      }
+      $("demo-strip").innerHTML = steps.join("");
+    }
 
-    $("submit").addEventListener("click", async () => {
+    async function refreshAgents() {
+      const res = await fetch("/v1/agents");
+      if (!res.ok) throw new Error("Could not load agents (" + res.status + ").");
+      const data = await res.json();
+      agents = data.agents || [];
+      if (!agents.length) {
+        renderError("No agents registered. Check config/agents.yaml.");
+        return;
+      }
+      const current = $("agent").value;
+      $("agent").innerHTML = agents.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
+      if (current) $("agent").value = current;
+      fillTools();
+      renderSampleButtons();
+      renderDemoStrip();
+    }
+
+    async function runCheck() {
+      if (checkInFlight) return;
+      $("token").classList.remove("token-missing");
+      if (!tokenValue()) {
+        promptForToken("GATEWAY_TOKEN is required. Paste the value from .env, then Check. Submit is blocked while empty.");
+        return;
+      }
       let args;
       try { args = JSON.parse($("args").value); }
-      catch { $("result").textContent = "Args must be valid JSON."; return; }
+      catch { renderError("Args must be valid JSON."); return; }
       const body = {
         agent_id: $("agent").value,
         tool: $("tool").value,
@@ -253,50 +452,95 @@
         session_context: $("context").value,
         session_id: $("session").value
       };
-      const res = await fetch("/v1/check", {
-        method: "POST",
-        headers: authHeaders(true),
-        body: JSON.stringify(body)
-      });
-      if (res.status === 401) {
-        $("result").textContent = "401: set GATEWAY_TOKEN from .env (demo token field above).";
-        return;
+      setCheckBusy(true);
+      try {
+        const res = await fetch("/v1/check", {
+          method: "POST",
+          headers: authHeaders(true),
+          body: JSON.stringify(body)
+        });
+        if (res.status === 401) {
+          promptForToken("401 Unauthorized — paste GATEWAY_TOKEN from .env into the GATEWAY_TOKEN field. Authorization: Bearer is required.");
+          return;
+        }
+        if (!res.ok) {
+          const text = await res.text();
+          renderError("Check failed (" + res.status + "): " + text.slice(0, 280));
+          return;
+        }
+        const data = await res.json();
+        renderDecision(data);
+      } catch (err) {
+        renderError("Network error: " + (err && err.message ? err.message : "request failed"));
+      } finally {
+        setCheckBusy(false);
       }
-      const data = await res.json();
-      const cls = data.verdict || "deny";
-      const gate = data.pending
-        ? "pending — do not execute"
-        : (data.execution_allowed ? "execution allowed" : "blocked — do not execute");
-      $("result").innerHTML = `
-        <span class="pill ${cls}">${data.verdict}</span>
-        <span class="pill">${data.category || "—"}</span>
-        <span class="pill ${data.execution_allowed ? "allow" : "deny"}">${gate}</span>
-        <span class="meta">${data.deciding_layer} · ${Number(data.latency_ms).toFixed(1)} ms · conf ${data.confidence ?? "—"}</span>
-        <p>${data.reasoning || data.reason || ""}</p>
-        <div class="meta">${data.model || "policy only"} ${data.timestamp_utc || ""}</div>
-      `;
-    });
+    }
+
+    async function applyAndCheck(key) {
+      applySample(key);
+      await runCheck();
+    }
 
     async function toggleRevoke(path) {
-      await fetch(path, {
+      if (!tokenValue()) {
+        promptForToken("GATEWAY_TOKEN is required to revoke or restore an agent.");
+        return false;
+      }
+      const res = await fetch(path, {
         method: "POST",
         headers: authHeaders(true),
         body: JSON.stringify({ agent_id: $("agent").value })
       });
+      if (res.status === 401) {
+        promptForToken("401 Unauthorized — paste GATEWAY_TOKEN from .env.");
+        return false;
+      }
+      if (!res.ok) {
+        renderError("Revoke request failed (" + res.status + ").");
+        return false;
+      }
       await refreshAgents();
+      return true;
     }
+
+    $("samples").addEventListener("click", (e) => {
+      const key = e.target.dataset.sample;
+      if (key) applyAndCheck(key);
+    });
+    $("demo-strip").addEventListener("click", async (e) => {
+      const key = e.target.dataset.demo;
+      if (!key) return;
+      if (key === "revoke_recheck") {
+        const ok = await toggleRevoke("/v1/revoke");
+        if (ok) await runCheck();
+        return;
+      }
+      await applyAndCheck(key);
+    });
+    $("agent").addEventListener("change", fillTools);
+    $("submit").addEventListener("click", () => runCheck());
     $("revoke").addEventListener("click", () => toggleRevoke("/v1/revoke"));
     $("unrevoke").addEventListener("click", () => toggleRevoke("/v1/unrevoke"));
 
-    const feed = $("feed");
-    $("token").value = sessionStorage.getItem("gateway_token") || "";
+    const stored = localStorage.getItem(TOKEN_KEY) || "";
+    $("token").value = stored;
     $("token").addEventListener("change", () => {
-      sessionStorage.setItem("gateway_token", $("token").value);
+      persistToken();
+      $("token").classList.remove("token-missing");
       connectAudit();
     });
+    $("token").addEventListener("input", persistToken);
     connectAudit();
 
-    refreshAgents().then(() => applySample("benign"));
+    refreshAgents()
+      .then(() => {
+        applySample("benign");
+        return runCheck();
+      })
+      .catch((err) => {
+        renderError(err && err.message ? err.message : "Failed to load agents.");
+      });
   </script>
 </body>
 </html>
