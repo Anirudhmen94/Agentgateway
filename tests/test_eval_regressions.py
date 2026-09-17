@@ -1,4 +1,4 @@
-"""Regressions for human-labeled FNs that policy currently clean_allows."""
+"""Regressions for human-labeled FNs that must not allow (Backend P0 + QA lock)."""
 
 from __future__ import annotations
 
@@ -15,11 +15,14 @@ FN_IDS = ("eval-142", "eval-176", "eval-182")
 def test_known_fn_must_not_allow(eid):
     clear_revocations()
     row = load_eval_row(eid)
+    policy = PolicyEngine(load_agents(), enforce_rate_limit=False)
+    pol = policy.evaluate(row)
+    assert pol.verdict != "allow", f"{eid} policy still clean_allow ({pol.rule_id})"
     decision = handle(
         row,
         use_cache=False,
         audit=False,
-        policy=PolicyEngine(load_agents(), enforce_rate_limit=False),
+        policy=policy,
     )
     assert decision.verdict != "allow", (
         f"{eid} gold={row['label']} still allowed "
@@ -27,3 +30,8 @@ def test_known_fn_must_not_allow(eid):
         "Policy clean_allow skipping the classifier is a FAIL."
     )
     assert decision.verdict in ("deny", "approve", "pending")
+    assert decision.execution_allowed is False
+    if decision.verdict == "approve":
+        assert decision.pending is True
+    else:
+        assert decision.pending is False

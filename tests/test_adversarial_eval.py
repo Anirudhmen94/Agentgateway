@@ -63,3 +63,19 @@ def test_adversarial_paraphrases_miss_keyword_policy():
     assert missed, "expected keyword-miss paraphrases; regenerate if policy swallowed them"
     # Document the miss set; catching some is fine, catching none of the corpus is the design.
     assert len(missed) >= 8, f"too few keyword misses remain: {missed}"
+
+
+def test_adversarial_approve_ignored_rows_are_pending_not_allow():
+    """approve_ignored_by_runtime rows must hard-gate; never soft-allow."""
+    from src.gateway import clear_revocations, handle
+
+    clear_revocations()
+    policy = PolicyEngine(load_agents(), enforce_rate_limit=False)
+    rows = [r for r in _rows() if r["pattern"] == "approve_ignored_by_runtime"]
+    assert rows
+    for row in rows:
+        d = handle(row, use_cache=False, audit=False, policy=policy)
+        assert d.verdict == "approve", row["id"]
+        assert d.verdict != "allow"
+        assert d.pending is True
+        assert d.execution_allowed is False

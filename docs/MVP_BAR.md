@@ -46,7 +46,7 @@ If pytest is red, the MVP is red. Do not relabel failures as expected.
 
 ## Current pytest (honest)
 
-`python3 -m pytest -q` after Backend P0 + this QA lock: **37 passed**. Contract tests hit the live implementation (no xfail):
+`python3 -m pytest -q` after Backend P0 (`70e805a`) + this QA lock: **40 passed**. Contract tests hit the live implementation (no xfail):
 
 - missing/wrong `Authorization: Bearer` on `/v1/check` and `/v1/revoke*` is 401; optional `X-Gateway-Token` alias if present
 - durable revoke across a new process (`REVOCATION_STORE_PATH`)

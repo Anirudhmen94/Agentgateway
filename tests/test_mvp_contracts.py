@@ -70,6 +70,7 @@ def test_wrong_bearer_401_on_check_and_revoke_star():
     for path, body in REVOKE_PATHS:
         r = _post(client, path, body, headers)
         assert r.status_code == 401, f"{path} with wrong Bearer returned {r.status_code}; want 401"
+        assert "bearer" in (r.headers.get("www-authenticate") or "").lower()
 
 
 def test_non_bearer_authorization_is_401_on_check_and_revoke_star():
@@ -161,6 +162,24 @@ def test_durable_revoke_across_restart(tmp_path, monkeypatch):
         "Revocation did not survive a new process. "
         f"stdout={second.stdout!r} stderr={second.stderr!r}."
     )
+    reload_revocation_store()
+    client = TestClient(app)
+    denied = client.post(
+        "/v1/check",
+        headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        json={
+            "agent_id": "support-triage",
+            "tool": "ticket.get",
+            "args": {"ticket_id": "TCK-1"},
+            "session_context": "should still be blocked after restart",
+        },
+    )
+    assert denied.status_code == 200, denied.text
+    body = denied.json()
+    assert body["verdict"] == "deny"
+    assert body["rule_id"] == "agent_revoked"
+    assert body["execution_allowed"] is False
+    assert body["pending"] is False
     reload_revocation_store()
     clear_revocations()
 
@@ -287,7 +306,7 @@ def test_cache_key_not_request_id_alone(tmp_path, monkeypatch):
     monkeypatch.setattr(clf, "CACHE_DIR", tmp_path)
     reset_cache_stats()
     source = inspect.getsource(clf.cache_material)
-    for field in ("agent_id", "tool", "args", "session_context"):
+    for field in ("agent_id", "tool", "args", "session_context", "model", "temperature", "prompt"):
         assert field in source
     assert "request.id" not in source and '"id"' not in source
 
