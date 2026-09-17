@@ -47,7 +47,13 @@ make run               # http://127.0.0.1:8000 (default bind, not 0.0.0.0)
 
 Override bind with `GATEWAY_HOST` / `GATEWAY_PORT` or `python -m src.app --host 0.0.0.0 --port 8000`.
 
-Paste `GATEWAY_TOKEN` into the UI. Mutating routes (`POST /v1/check`, `/v1/revoke*`, audit stream) return **401** without it.
+Paste `GATEWAY_TOKEN` into the UI. Mutating routes (`POST /v1/check`, `/v1/revoke*`, audit stream) require:
+
+```http
+Authorization: Bearer <GATEWAY_TOKEN>
+```
+
+Optional alias: `X-Gateway-Token: <GATEWAY_TOKEN>`. Missing or wrong token → **401**.
 
 Without an xAI key, the UI still returns decisions in real time (policy + local fallback). With a key, undecided rows call grok-4.6 at `https://api.x.ai/v1`.
 

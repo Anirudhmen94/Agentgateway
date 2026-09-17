@@ -10,6 +10,7 @@ from src.gateway import clear_revocations, handle, reload_revocation_store, revo
 from src.models import ToolRequest, execution_allowed, execution_state
 from src.policy import PolicyEngine, load_agents
 from src.revocation import RevocationStore
+from tests.conftest import TEST_TOKEN
 
 EVAL_PATH = Path(__file__).resolve().parent.parent / "data" / "eval_set.jsonl"
 
@@ -39,8 +40,11 @@ def test_check_and_revoke_require_token(auth_headers):
     assert client.get("/v1/audit/stream").status_code == 401
     ok = client.post("/v1/check", json=body, headers=auth_headers)
     assert ok.status_code == 200
+    alias = client.post("/v1/check", json=body, headers={"X-Gateway-Token": TEST_TOKEN})
+    assert alias.status_code == 200
     denied_stream = client.get("/v1/audit/stream", headers={"X-Gateway-Token": "nope"})
     assert denied_stream.status_code == 401
+    assert client.post("/v1/check", json=body, headers={"Authorization": "Basic not-the-contract"}).status_code == 401
 
 
 def test_empty_gateway_token_is_fail_closed(monkeypatch):

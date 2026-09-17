@@ -24,7 +24,13 @@ Mutating / control routes require `GATEWAY_TOKEN` from `.env`:
 - `POST /v1/revoke/clear`
 - `GET /v1/audit/stream` (header or `?token=`)
 
-Send `Authorization: Bearer <token>` or `X-Gateway-Token: <token>`. Missing or wrong token → **401**. An empty `GATEWAY_TOKEN` is fail-closed (also 401).
+Primary header (required contract):
+
+```http
+Authorization: Bearer <GATEWAY_TOKEN>
+```
+
+`GATEWAY_TOKEN` is read from `.env` only. Optional alias: `X-Gateway-Token: <GATEWAY_TOKEN>`. SSE clients that cannot set headers may pass `?token=` (same value). Missing or wrong token → **401**. An empty `GATEWAY_TOKEN` is fail-closed (also 401).
 
 Open (demo UI): `GET /`, `GET /health`, `GET /v1/agents`.
 

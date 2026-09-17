@@ -13,7 +13,7 @@ For every tool call the gateway returns **allow**, **deny**, or **approve** (hum
 3. **Intent classifier.** Only `undecided` policy results are sent to grok-4.6 (or a local fallback). The model is asked one question: does this call serve the agent's declared purpose? Cache keys hash canonical `agent_id`, `tool`, `args`, `session_context`, model, temperature, and prompt — not request id.
 4. **Audit.** Every decision is appended as one JSON line with the deciding layer, latency, execution gate, and model version when used.
 
-Demo HTTP: mutating/control routes require `GATEWAY_TOKEN`. The process listens on `127.0.0.1` unless `GATEWAY_HOST` or `--host` overrides it.
+Demo HTTP: mutating/control routes require `Authorization: Bearer <GATEWAY_TOKEN>` (`GATEWAY_TOKEN` from `.env`; optional alias `X-Gateway-Token`). The process listens on `127.0.0.1` unless `GATEWAY_HOST` or `--host` overrides it.
 
 ## Threat categories
 

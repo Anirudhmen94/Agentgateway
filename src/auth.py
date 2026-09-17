@@ -13,6 +13,10 @@ def gateway_token() -> str:
 
 
 def extract_token(request: Request, query_token: str | None = None) -> str | None:
+    """Primary contract is Authorization: Bearer <GATEWAY_TOKEN>.
+
+    Optional alias: X-Gateway-Token. Query `token` is only for EventSource.
+    """
     header = request.headers.get("authorization") or ""
     if header.lower().startswith("bearer "):
         return header[7:].strip()
