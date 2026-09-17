@@ -4,7 +4,7 @@ from src.app import app
 from src.gateway import clear_revocations
 
 
-def test_health_and_check_benign_and_scope_creep():
+def test_health_and_check_benign_and_scope_creep(auth_headers):
     clear_revocations()
     client = TestClient(app)
     assert client.get("/health").json()["status"] == "ok"
@@ -14,6 +14,7 @@ def test_health_and_check_benign_and_scope_creep():
 
     benign = client.post(
         "/v1/check",
+        headers=auth_headers,
         json={
             "agent_id": "support-triage",
             "tool": "ticket.get",
@@ -25,11 +26,14 @@ def test_health_and_check_benign_and_scope_creep():
     assert benign.status_code == 200
     body = benign.json()
     assert body["verdict"] == "allow"
+    assert body["execution_allowed"] is True
+    assert body["state"] == "allowed"
     assert body["category"] == "benign"
     assert body["deciding_layer"] == "policy"
 
     creep = client.post(
         "/v1/check",
+        headers=auth_headers,
         json={
             "agent_id": "customer-data-lookup",
             "tool": "customer.get",
@@ -41,15 +45,17 @@ def test_health_and_check_benign_and_scope_creep():
     assert creep.status_code == 200
     creep_body = creep.json()
     assert creep_body["verdict"] in ("deny", "approve")
+    assert creep_body["execution_allowed"] is False
     assert creep_body["category"] in ("scope_creep", "data_exfiltration", "prompt_injection")
 
     agents = client.get("/v1/agents").json()["agents"]
     assert len(agents) == 4
 
-    revoked = client.post("/v1/revoke", json={"agent_id": "support-triage"})
+    revoked = client.post("/v1/revoke", headers=auth_headers, json={"agent_id": "support-triage"})
     assert revoked.json()["revoked"] is True
     denied = client.post(
         "/v1/check",
+        headers=auth_headers,
         json={
             "agent_id": "support-triage",
             "tool": "ticket.get",
@@ -59,5 +65,6 @@ def test_health_and_check_benign_and_scope_creep():
     )
     assert denied.json()["verdict"] == "deny"
     assert denied.json()["rule_id"] == "agent_revoked"
-    client.post("/v1/unrevoke", json={"agent_id": "support-triage"})
+    assert denied.json()["execution_allowed"] is False
+    client.post("/v1/unrevoke", headers=auth_headers, json={"agent_id": "support-triage"})
     clear_revocations()

@@ -4,22 +4,16 @@ Agents get tools. Tools do damage when the call no longer matches the job the ag
 
 ## What it does
 
-- Every request returns **allow**, **deny**, or **approve**.
-- Revocation is checked first.
-- A deterministic policy layer decides unknown tools, allow-lists, rate limits, and escalation tools with no model and no network.
+- Every request returns **allow**, **deny**, or **approve**, plus an execution gate: only `allow` has `execution_allowed=true`. `approve` is **pending_approval** and must not run. Contract: [`docs/CONTRACT.md`](docs/CONTRACT.md).
+- Revocation is checked first (durable file store under `out/revocations.json`).
+- A deterministic policy layer decides unknown tools, allow-lists, rate limits, escalation tools, and obvious over-collection with no model and no network.
 - Only leftovers go to **grok-4.6** (temperature 0, JSON schema). One question: does this call serve the registered purpose?
 - Five labels: benign, prompt injection, scope creep, data exfiltration, credential misuse.
 - Every decision is one JSON line in `out/audit.jsonl`.
 
 ## Results
 
-`out/scorecard.md` on the 200-row synthetic set, local fallback (`grok-4.6-local-fallback`, temperature 0):
-
-- Detection rate **97.3%** (non-benign deny or approve)
-- False-positive rate **0.0%**
-- Policy decided **46.5%** of rows; the classifier **53.5%** — the eval set is attack-heavy on purpose. Clean triage lookups still die in policy in under a millisecond.
-
-Pin `grok-4.6` with `XAI_API_KEY`. Re-run `make eval` after a prompt change; responses cache under `.cache/classifier/`.
+`out/scorecard.md` is labeled by model name. Runs without `XAI_API_KEY` use `grok-4.6-local-fallback` and **are not grok-4.6 quality**. Re-run `make eval` after a prompt change; classifier cache keys hash canonical request fields (not request id).
 
 ## Architecture
 
@@ -27,19 +21,19 @@ Policy is cheap and boring on purpose. Most clean, in-scope calls never pay for 
 
 ## What is real / stubbed
 
-Real: policy engine, gateway ordering, audit log, eval harness, live `POST /v1/check`, SSE audit feed, revoke. Stubbed: human approval (recorded, not gated), auth, durable revocation store. Classifier calls xAI when `XAI_API_KEY` is set; otherwise a local heuristic fallback so the demo still runs.
+Real: policy engine, gateway ordering, JSONL audit, eval harness, `POST /v1/check`, SSE audit feed, demo token auth, loopback bind default, durable revocation, approve as a hard pending gate, canonical classifier cache. Stubbed: operator SSO / out-of-band ACK UI (the API already refuses to treat approve as allow). Classifier calls xAI when `XAI_API_KEY` is set; otherwise a local heuristic fallback so the demo still runs.
 
 ## What I would build next
 
 1. Session-level quotas on distinct record ids (red team: paging around bulk limits).
-2. Hard-block `approve` until an operator ACK.
-3. Hash the full request into the classifier cache key so live replays cannot poison eval ids.
+2. Operator ACK workflow that flips `pending_approval` to allow only after an authenticated human.
+3. Fail-closed classifier mode when the hosted model is required and the key is missing.
 
 ## What I got wrong
 
-Keyword policy still misses paraphrased scope creep and injection that avoids the marker list — the red-team file leads with those. I also treated `approve` as a decision instead of a lock, which is a false sense of control if a runtime ignores it.
+Keyword policy still misses paraphrased scope creep and injection that avoids the marker list — the red-team file leads with those. Approve-as-lock is now in the API contract; a non-compliant runtime can still ignore it.
 
-Synthetic data only. Prototype to think through the control, not a product.
+Synthetic data only. Control-plane prototype, not a product.
 
 ---
 
@@ -47,17 +41,21 @@ Synthetic data only. Prototype to think through the control, not a product.
 
 ```bash
 python3 -m pip install -r requirements.txt
-cp .env.example .env   # optional: set XAI_API_KEY for grok-4.6
-make run               # http://127.0.0.1:8000
+cp .env.example .env   # set GATEWAY_TOKEN; optional XAI_API_KEY for grok-4.6
+make run               # http://127.0.0.1:8000 (default bind, not 0.0.0.0)
 ```
 
-Without a key, the UI still returns decisions in real time (policy + local fallback). With a key, undecided rows call grok-4.6 at `https://api.x.ai/v1`.
+Override bind with `GATEWAY_HOST` / `GATEWAY_PORT` or `python -m src.app --host 0.0.0.0 --port 8000`.
 
-Demo path: sample **benign** (policy allow) → sample **scope creep** (model/heuristic deny) → revoke the agent and resubmit → watch the audit feed.
+Paste `GATEWAY_TOKEN` into the UI. Mutating routes (`POST /v1/check`, `/v1/revoke*`, audit stream) return **401** without it.
+
+Without an xAI key, the UI still returns decisions in real time (policy + local fallback). With a key, undecided rows call grok-4.6 at `https://api.x.ai/v1`.
+
+Demo path: sample **benign** (policy allow, execution allowed) → sample **scope creep** (deny, blocked) → escalation tool (approve, **pending — do not execute**) → revoke the agent and resubmit → watch the audit feed.
 
 ```bash
-make test              # policy + gateway + API smoke
+make test              # policy + gateway + API + P0 contracts
 python3 -m src.eval_run --limit 20
 make eval              # full 200, writes out/scorecard.md
-docker compose up --build
+docker compose up --build   # Compose sets GATEWAY_HOST=0.0.0.0 inside the container
 ```

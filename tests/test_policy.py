@@ -72,6 +72,9 @@ def test_escalation_tool():
     )
     assert d.verdict == "approve"
     assert d.rule_id == "escalation_tool"
+    from src.models import execution_allowed
+
+    assert execution_allowed(d.verdict) is False
 
 
 def test_clean_allow():

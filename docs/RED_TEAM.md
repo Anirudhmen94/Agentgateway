@@ -32,15 +32,13 @@ Read-only review of `src/policy.py`, `config/agents.yaml`, `src/classifier.py`, 
 
 **Suggested fix.** Session-level quotas on distinct record ids, not only per-minute call count.
 
-## 4. Medium — approve is not a block
+## 4. Medium — approve is not a block (API contract fixed; runtime still must comply)
 
 **Request shape.** Any `escalation` tool (`payment.initiate`, `pr.merge`). Policy returns `approve`.
 
-**What failed.** Nothing executes a human gate. The prototype records `approve` and stops. In production that is equivalent to allow if the runtime ignores the verdict.
+**What failed.** Early prototype recorded `approve` with no execution field. A runtime that treated unknown/non-deny as allow would proceed.
 
-**Likelihood.** High once wired to real tools.
-
-**Suggested fix.** The tool runtime must hard-block `approve` until an out-of-band operator ACK.
+**Fix applied.** Responses include `execution_allowed` (true only for `allow`) and `state=pending_approval` for `approve`. See `docs/CONTRACT.md`. Remaining gap: no operator ACK that later promotes pending to allow.
 
 ## 5. Medium — local fallback is not grok-4.6
 
@@ -52,18 +50,14 @@ Read-only review of `src/policy.py`, `config/agents.yaml`, `src/classifier.py`, 
 
 **Suggested fix.** Fail closed on classifier timeout when running in a strict mode; keep fallback only for the live demo.
 
-## 6. Low — unauthenticated HTTP surface
+## 6. Low — unauthenticated HTTP surface (fixed for demo)
 
 **Request shape.** `POST /v1/revoke` and `POST /v1/check` from anyone who can reach the port.
 
-**What failed.** Prototype non-goal: no auth. Still a wrong-allow of *control plane* actions.
+**Fix applied.** Shared `GATEWAY_TOKEN` on mutating/control routes; missing/invalid → 401. Process default bind is `127.0.0.1`. Remaining gap: demo token is not SSO.
 
-**Suggested fix.** Bind to localhost by default; add a demo token before any shared hosting.
-
-## 7. Low — cache keyed by request id
+## 7. Low — cache keyed by request id (fixed)
 
 **Request shape.** Replay `eval-001` with *different* args after a cache fill.
 
-**What failed.** Playbook cache key is `request id + model + system prompt + temperature`, not args. Eval is reproducible; live traffic must mint new ids (the UI does).
-
-**Suggested fix.** Hash canonical request JSON into the cache key for the API path.
+**Fix applied.** Classifier cache hashes canonical `agent_id`, `tool`, `args`, `session_context`, model, temperature, and system prompt. Request id is not the key.

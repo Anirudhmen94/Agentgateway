@@ -10,10 +10,13 @@ from uuid import uuid4
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from src.auth import require_gateway_token
+from src.bind import resolve_bind
 from src.gateway import (
     clear_revocations,
     handle,
@@ -24,9 +27,12 @@ from src.gateway import (
 )
 from src.policy import load_agents
 
+load_dotenv()
+
 ROOT = Path(__file__).resolve().parent.parent
 UI_PATH = ROOT / "src" / "static" / "index.html"
 _queue: asyncio.Queue | None = None
+Protected = Depends(require_gateway_token)
 
 
 @asynccontextmanager
@@ -94,7 +100,7 @@ def agents() -> dict[str, Any]:
 
 
 @app.post("/v1/check")
-def check(body: CheckBody) -> dict[str, Any]:
+def check(body: CheckBody, _: None = Protected) -> dict[str, Any]:
     request = {
         "id": body.id or body.request_id or f"live-{uuid4().hex[:12]}",
         "agent_id": body.agent_id,
@@ -104,24 +110,13 @@ def check(body: CheckBody) -> dict[str, Any]:
         "session_id": body.session_id,
     }
     decision = handle(request, use_cache=True)
-    return {
-        "request": request,
-        "verdict": decision.verdict,
-        "category": decision.category,
-        "confidence": decision.confidence,
-        "reasoning": decision.reasoning,
-        "deciding_layer": decision.deciding_layer,
-        "rule_id": decision.rule_id,
-        "latency_ms": decision.latency_ms,
-        "model": decision.model,
-        "temperature": decision.temperature,
-        "timestamp_utc": decision.timestamp_utc,
-        "cached": decision.cached,
-    }
+    payload = decision.to_public_dict()
+    payload["request"] = request
+    return payload
 
 
 @app.post("/v1/revoke")
-def revoke_agent(body: RevokeBody) -> dict[str, Any]:
+def revoke_agent(body: RevokeBody, _: None = Protected) -> dict[str, Any]:
     if body.agent_id not in load_agents():
         raise HTTPException(404, "unknown agent")
     revoke(body.agent_id)
@@ -129,19 +124,19 @@ def revoke_agent(body: RevokeBody) -> dict[str, Any]:
 
 
 @app.post("/v1/unrevoke")
-def unrevoke_agent(body: RevokeBody) -> dict[str, Any]:
+def unrevoke_agent(body: RevokeBody, _: None = Protected) -> dict[str, Any]:
     unrevoke(body.agent_id)
     return {"agent_id": body.agent_id, "revoked": False}
 
 
 @app.post("/v1/revoke/clear")
-def revoke_clear() -> dict[str, str]:
+def revoke_clear(_: None = Protected) -> dict[str, str]:
     clear_revocations()
     return {"status": "cleared"}
 
 
 @app.get("/v1/audit/stream")
-async def audit_stream() -> StreamingResponse:
+async def audit_stream(_: None = Protected) -> StreamingResponse:
     async def gen():
         q = _queue
         yield "event: hello\ndata: {\"ok\": true}\n\n"
@@ -155,12 +150,9 @@ async def audit_stream() -> StreamingResponse:
 
 
 def main() -> None:
-    import os
-
     import uvicorn
 
-    host = os.getenv("GATEWAY_HOST") or "0.0.0.0"
-    port = int(os.getenv("GATEWAY_PORT") or "8000")
+    host, port = resolve_bind()
     uvicorn.run("src.app:app", host=host, port=port, reload=False)
 
 

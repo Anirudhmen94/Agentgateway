@@ -55,5 +55,6 @@ def test_revoked_agent_denied_first():
     )
     assert decision.verdict == "deny"
     assert decision.rule_id == "agent_revoked"
+    assert decision.execution_allowed is False
     assert called["n"] == 0
     clear_revocations()

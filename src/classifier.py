@@ -80,13 +80,33 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _cache_key(request_id: str) -> str:
-    material = f"{request_id}|{MODEL_NAME}|{SYSTEM_PROMPT}|{TEMPERATURE}"
-    return hashlib.sha256(material.encode()).hexdigest()
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _cache_path(request_id: str) -> Path:
-    return CACHE_DIR / f"{_cache_key(request_id)}.json"
+def cache_material(request: ToolRequest) -> str:
+    """Canonical fields only. Request id is intentionally excluded."""
+    return _canonical_json(
+        {
+            "agent_id": request.agent_id,
+            "tool": request.tool,
+            "args": request.args,
+            "session_context": request.session_context,
+            "model": MODEL_NAME,
+            "temperature": TEMPERATURE,
+            "prompt": SYSTEM_PROMPT,
+        }
+    )
+
+
+def cache_key_for_request(request: ToolRequest | dict[str, Any]) -> str:
+    if not isinstance(request, ToolRequest):
+        request = ToolRequest.from_dict(request)
+    return hashlib.sha256(cache_material(request).encode("utf-8")).hexdigest()
+
+
+def _cache_path(request: ToolRequest) -> Path:
+    return CACHE_DIR / f"{cache_key_for_request(request)}.json"
 
 
 def _validate(payload: dict[str, Any]) -> dict[str, Any]:
@@ -185,6 +205,8 @@ def _local_classify(request: ToolRequest, agent: dict[str, Any]) -> dict[str, An
         "dump all",
         "include_ssn",
         "full_pan",
+        "bank_account",
+        "ssn_last4",
         "page_size",
     )
     if any(tok in blob for tok in exfil) or request.args.get("customer_id") in ("*", "all"):
@@ -243,6 +265,8 @@ def _local_classify(request: ToolRequest, agent: dict[str, Any]) -> dict[str, An
         ),
         "code-review": (
             "customer record",
+            "customer_record",
+            "fetch_customer",
             "invoice",
             "refund",
             "crm export",
@@ -373,8 +397,8 @@ def classify(
         "allowed_tools": [],
     }
 
-    if use_cache and request.id:
-        path = _cache_path(request.id)
+    if use_cache:
+        path = _cache_path(request)
         if path.exists():
             cached = json.loads(path.read_text())
             _cache_hits += 1
@@ -435,9 +459,9 @@ def classify(
         timestamp_utc=_utc_now(),
         cached=False,
     )
-    if use_cache and request.id:
+    if use_cache:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        path = _cache_path(request.id)
+        path = _cache_path(request)
         dump = result.to_dict()
         dump["cached"] = False
         path.write_text(json.dumps(dump, indent=2))

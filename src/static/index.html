@@ -87,6 +87,7 @@
     .allow { background: #1d3218; color: var(--allow); }
     .deny { background: #3a1b17; color: var(--deny); }
     .approve { background: #3a2e14; color: var(--approve); }
+    .pending { background: #3a2e14; color: var(--approve); }
     .feed { font-family: var(--mono); font-size: 0.72rem; max-height: 420px; overflow: auto; line-height: 1.45; }
     .feed div { border-bottom: 1px dashed var(--line); padding: 8px 0; }
     .purpose { color: var(--muted); font-size: 0.92rem; margin: 0 0 8px; }
@@ -97,9 +98,9 @@
   <header>
     <div>
       <h1>Agent Trust Gateway</h1>
-      <p>Policy first, model second. Every tool call gets allow, deny, or approve before it runs.</p>
+      <p>Policy first, model second. allow may execute; deny and approve (pending) must not.</p>
     </div>
-    <div class="meta">POST /v1/check · live audit SSE</div>
+    <div class="meta">POST /v1/check · Bearer token · bind 127.0.0.1</div>
   </header>
   <main>
     <section>
@@ -115,6 +116,8 @@
           <select id="tool"></select>
         </div>
       </div>
+      <label>Demo token (GATEWAY_TOKEN)</label>
+      <input id="token" type="password" autocomplete="off" placeholder="same value as .env GATEWAY_TOKEN" />
       <label>Session id</label>
       <input id="session" value="sess-live-1" />
       <label>Session context</label>
@@ -171,6 +174,36 @@
 
     let agents = [];
     const $ = (id) => document.getElementById(id);
+    let auditSource = null;
+
+    function tokenValue() {
+      return ($("token").value || "").trim();
+    }
+
+    function authHeaders(json) {
+      const headers = {};
+      if (json) headers["Content-Type"] = "application/json";
+      const tok = tokenValue();
+      if (tok) {
+        headers["Authorization"] = "Bearer " + tok;
+        headers["X-Gateway-Token"] = tok;
+      }
+      return headers;
+    }
+
+    function connectAudit() {
+      if (auditSource) auditSource.close();
+      const tok = encodeURIComponent(tokenValue());
+      const url = tokenValue() ? "/v1/audit/stream?token=" + tok : "/v1/audit/stream";
+      auditSource = new EventSource(url);
+      auditSource.addEventListener("audit", (ev) => {
+        const row = JSON.parse(ev.data);
+        const el = document.createElement("div");
+        const gate = row.execution_allowed ? "execute" : (row.state || "blocked");
+        el.innerHTML = `<strong>${row.verdict}</strong> ${row.agent_id} ${row.tool} · ${gate} · ${row.deciding_layer} · ${row.category || row.rule_id}`;
+        feed.prepend(el);
+      });
+    }
 
     function fillTools() {
       const agent = agents.find(a => a.id === $("agent").value);
@@ -222,14 +255,22 @@
       };
       const res = await fetch("/v1/check", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(true),
         body: JSON.stringify(body)
       });
+      if (res.status === 401) {
+        $("result").textContent = "401: set GATEWAY_TOKEN from .env (demo token field above).";
+        return;
+      }
       const data = await res.json();
       const cls = data.verdict || "deny";
+      const gate = data.execution_allowed
+        ? "execution allowed"
+        : (data.state === "pending_approval" ? "pending — do not execute" : "blocked — do not execute");
       $("result").innerHTML = `
         <span class="pill ${cls}">${data.verdict}</span>
         <span class="pill">${data.category || "—"}</span>
+        <span class="pill ${data.execution_allowed ? "allow" : "deny"}">${gate}</span>
         <span class="meta">${data.deciding_layer} · ${Number(data.latency_ms).toFixed(1)} ms · conf ${data.confidence ?? "—"}</span>
         <p>${data.reasoning || data.reason || ""}</p>
         <div class="meta">${data.model || "policy only"} ${data.timestamp_utc || ""}</div>
@@ -239,7 +280,7 @@
     async function toggleRevoke(path) {
       await fetch(path, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(true),
         body: JSON.stringify({ agent_id: $("agent").value })
       });
       await refreshAgents();
@@ -248,13 +289,12 @@
     $("unrevoke").addEventListener("click", () => toggleRevoke("/v1/unrevoke"));
 
     const feed = $("feed");
-    const es = new EventSource("/v1/audit/stream");
-    es.addEventListener("audit", (ev) => {
-      const row = JSON.parse(ev.data);
-      const el = document.createElement("div");
-      el.innerHTML = `<strong>${row.verdict}</strong> ${row.agent_id} ${row.tool} · ${row.deciding_layer} · ${row.category || row.rule_id}`;
-      feed.prepend(el);
+    $("token").value = sessionStorage.getItem("gateway_token") || "";
+    $("token").addEventListener("change", () => {
+      sessionStorage.setItem("gateway_token", $("token").value);
+      connectAudit();
     });
+    connectAudit();
 
     refreshAgents().then(() => applySample("benign"));
   </script>

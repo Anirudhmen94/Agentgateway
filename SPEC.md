@@ -6,12 +6,14 @@ AI agents are being granted tools that read tickets, post ledger drafts, comment
 
 ## Decision model
 
-For every tool call the gateway returns **allow**, **deny**, or **approve** (human-in-the-loop).
+For every tool call the gateway returns **allow**, **deny**, or **approve** (human-in-the-loop). Only **allow** authorizes execution. See [`docs/CONTRACT.md`](docs/CONTRACT.md).
 
-1. **Revocation.** A revoked agent is denied before any other rule.
-2. **Deterministic policy.** Unknown tools, tools outside `allowed_tools`, rate limits, and explicit escalation tools are decided with no model and no network.
-3. **Intent classifier.** Only `undecided` policy results are sent to grok-4.6 (or a local fallback). The model is asked one question: does this call serve the agent's declared purpose?
-4. **Audit.** Every decision is appended as one JSON line with the deciding layer, latency, and model version when used.
+1. **Revocation.** A revoked agent is denied before any other rule. The list is a JSON file (default `out/revocations.json`) and is honored after process restart.
+2. **Deterministic policy.** Unknown tools, tools outside `allowed_tools`, rate limits, explicit escalation tools, sensitive over-collection, and cross-tool record piggybacks are decided with no model and no network. Escalation tools return `approve` / `pending_approval`, never allow.
+3. **Intent classifier.** Only `undecided` policy results are sent to grok-4.6 (or a local fallback). The model is asked one question: does this call serve the agent's declared purpose? Cache keys hash canonical `agent_id`, `tool`, `args`, `session_context`, model, temperature, and prompt — not request id.
+4. **Audit.** Every decision is appended as one JSON line with the deciding layer, latency, execution gate, and model version when used.
+
+Demo HTTP: mutating/control routes require `GATEWAY_TOKEN`. The process listens on `127.0.0.1` unless `GATEWAY_HOST` or `--host` overrides it.
 
 ## Threat categories
 
@@ -25,4 +27,4 @@ For every tool call the gateway returns **allow**, **deny**, or **approve** (hum
 
 ## Non-goals
 
-Not a production control plane: no operator SSO, no durable database, no tool sandbox, no customer telemetry. Synthetic agents and synthetic requests only. No Radware code, documents, detection logic, or customer data.
+Not a full production control plane: no operator SSO, no tool sandbox, no customer telemetry. File-backed revocation is the v1 store, not a replicated database. Synthetic agents and synthetic requests only. No Radware code, documents, detection logic, or customer data.

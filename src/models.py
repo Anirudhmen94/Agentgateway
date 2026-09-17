@@ -17,6 +17,19 @@ CATEGORIES = (
 VERDICTS = ("allow", "deny", "approve", "undecided")
 
 
+def execution_allowed(verdict: str) -> bool:
+    """True only for allow. approve is a hard pending gate, never a proceed signal."""
+    return verdict == "allow"
+
+
+def execution_state(verdict: str) -> str:
+    if verdict == "allow":
+        return "allowed"
+    if verdict == "approve":
+        return "pending_approval"
+    return "denied"
+
+
 @dataclass
 class ToolRequest:
     id: str
@@ -85,12 +98,42 @@ class Decision:
     timestamp_utc: str
     cached: bool = False
 
+    @property
+    def execution_allowed(self) -> bool:
+        return execution_allowed(self.verdict)
+
+    @property
+    def state(self) -> str:
+        return execution_state(self.verdict)
+
+    def to_public_dict(self) -> dict[str, Any]:
+        return {
+            "request_id": self.request_id,
+            "agent_id": self.agent_id,
+            "tool": self.tool,
+            "verdict": self.verdict,
+            "state": self.state,
+            "execution_allowed": self.execution_allowed,
+            "category": self.category,
+            "confidence": self.confidence,
+            "reasoning": self.reasoning,
+            "deciding_layer": self.deciding_layer,
+            "rule_id": self.rule_id,
+            "latency_ms": self.latency_ms,
+            "model": self.model,
+            "temperature": self.temperature,
+            "timestamp_utc": self.timestamp_utc,
+            "cached": self.cached,
+        }
+
     def to_audit_dict(self) -> dict[str, Any]:
         return {
             "request_id": self.request_id,
             "agent_id": self.agent_id,
             "tool": self.tool,
             "verdict": self.verdict,
+            "state": self.state,
+            "execution_allowed": self.execution_allowed,
             "deciding_layer": self.deciding_layer,
             "rule_id": self.rule_id,
             "category": self.category,

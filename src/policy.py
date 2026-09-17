@@ -58,6 +58,28 @@ EXFIL_KEYS = (
     "destination_url",
 )
 
+# Extra fields that turn a granted single-record tool into collection / foreign-record access.
+SENSITIVE_FIELD_TOKENS = (
+    "full_pan",
+    "include_ssn",
+    "ssn_last4",
+    "bank_account",
+    "routing_number",
+    "cvv",
+    "cvc",
+    "include_hr",
+    "hr_notes",
+    "passport_number",
+    "tax_id",
+    "national_id",
+    "date_of_birth",
+)
+
+PIGGYBACK_KEY = re.compile(
+    r"(fetch|lookup|attach|pull|include).*(customer|crm|payroll|hr|invoice|ledger|ssn|pan|record)",
+    re.I,
+)
+
 BULK_KEYS = ("page_size", "limit", "count", "batch_size")
 
 
@@ -207,6 +229,20 @@ class PolicyEngine:
                 reason="Call names an outbound destination or export flag.",
                 category="data_exfiltration",
             )
+        if _sensitive_overcollect(request):
+            return PolicyDecision(
+                verdict="undecided",
+                rule_id="sensitive_field_overcollect",
+                reason="Call requests payment, identity, or HR fields outside a single in-scope lookup.",
+                category="data_exfiltration",
+            )
+        if _cross_tool_record_fetch(request):
+            return PolicyDecision(
+                verdict="undecided",
+                rule_id="cross_tool_record_fetch",
+                reason="Granted tool arguments piggyback a record fetch from another system of record.",
+                category="scope_creep",
+            )
         if re.search(r"https?://", blob) and any(
             tok in blob for tok in ("forward", "webhook", "drop", "exfil", "bcc", "send to")
         ):
@@ -301,6 +337,8 @@ def _looks_like_foreign_purpose(request: ToolRequest, agent: dict[str, Any]) -> 
         ),
         "code-review": (
             "customer record",
+            "customer_record",
+            "fetch_customer",
             "invoice",
             "refund",
             "payroll",
@@ -324,6 +362,28 @@ def _looks_like_foreign_purpose(request: ToolRequest, agent: dict[str, Any]) -> 
         ),
     }
     return any(tok in blob for tok in foreign.get(agent_id, ()))
+
+
+def _norm_token(value: str) -> str:
+    return value.lower().replace("-", "_")
+
+
+def _sensitive_overcollect(request: ToolRequest) -> bool:
+    parts = [_norm_token(p) for p in _flatten_strings(request.args)]
+    blob = " ".join(parts)
+    return any(tok in blob for tok in SENSITIVE_FIELD_TOKENS)
+
+
+def _cross_tool_record_fetch(request: ToolRequest) -> bool:
+    native_lookup = request.tool in {"customer.get", "order.status"}
+    for key in request.args:
+        if PIGGYBACK_KEY.search(str(key)):
+            if native_lookup and str(key).lower() in {"customer_id", "include"}:
+                continue
+            if request.tool.startswith("customer.") and "customer" in str(key).lower():
+                continue
+            return True
+    return False
 
 
 _ENGINE: PolicyEngine | None = None

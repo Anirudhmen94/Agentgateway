@@ -12,11 +12,11 @@ from typing import Any, Callable
 from src.classifier import classify
 from src.models import Decision, ToolRequest
 from src.policy import PolicyEngine, get_engine
+from src.revocation import get_store, reset_store_for_tests
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "out"
 AUDIT_PATH = OUT_DIR / "audit.jsonl"
 
-_revoked: set[str] = set()
 _lock = threading.Lock()
 _subscribers: list[Callable[[dict[str, Any]], None]] = []
 
@@ -38,23 +38,24 @@ def subscribe_audit(callback: Callable[[dict[str, Any]], None]) -> Callable[[], 
 
 
 def revoked_agents() -> set[str]:
-    with _lock:
-        return set(_revoked)
+    return get_store().all()
 
 
 def revoke(agent_id: str) -> None:
-    with _lock:
-        _revoked.add(agent_id)
+    get_store().add(agent_id)
 
 
 def unrevoke(agent_id: str) -> None:
-    with _lock:
-        _revoked.discard(agent_id)
+    get_store().discard(agent_id)
 
 
 def clear_revocations() -> None:
-    with _lock:
-        _revoked.clear()
+    get_store().clear()
+
+
+def reload_revocation_store() -> None:
+    """Drop the process-local store handle so the next call reloads from disk."""
+    reset_store_for_tests()
 
 
 def _append_audit(record: dict[str, Any]) -> None:
@@ -84,8 +85,7 @@ def handle(
     if not request.id:
         request.id = f"req-{int(time.time() * 1000)}"
 
-    with _lock:
-        is_revoked = request.agent_id in _revoked
+    is_revoked = get_store().contains(request.agent_id)
 
     if is_revoked:
         decision = Decision(

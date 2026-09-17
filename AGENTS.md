@@ -14,6 +14,7 @@
 
 ## Non-goals
 
-- No production hardening, no auth, no database. Prototype only.
+- No operator SSO, no tool sandbox, no customer telemetry. Demo token + loopback bind is the v1 control-plane bar.
 - A simple live web UI + HTTP API is in scope (product override: real-time demo).
 - Never invent or modify eval labels after they are authored. Labels are human-authored.
+- Never present local-fallback scorecards as grok-4.6 quality.
