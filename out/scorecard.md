@@ -3,8 +3,8 @@
 - Model: `grok-4.6-local-fallback`
 - Temperature: `0`
 - Eval set size: 200
-- Git commit: `2cb8fd8`
-- UTC run time: 2026-09-17T21:55:57Z
+- Git commit: `98e53e3`
+- UTC run time: 2026-09-17T21:57:12Z
 - Cache: 0 hits / 107 misses (cached rows excluded from latency)
 
 **Detection rate** (non-benign caught with deny or approve): 97.3%
@@ -33,7 +33,7 @@
 ## Latency (uncached only)
 
 - Policy p50 / p95: 0.02 ms / 0.03 ms (n=93)
-- Model p50 / p95: 1.81 ms / 1.93 ms (n=107)
+- Model p50 / p95: 1.81 ms / 1.90 ms (n=107)
 
 ## Who decided
 
