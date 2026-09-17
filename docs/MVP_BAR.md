@@ -18,7 +18,7 @@ This bar is for the locked prototype on `cursor/agent-trust-gateway-e038`. It do
 | --- | --- | --- |
 | Auth | Primary header is `Authorization: Bearer <GATEWAY_TOKEN>` from `.env`. Missing or wrong **Bearer** on `POST /v1/check` and `POST /v1/revoke*` is **401**. Optional alias `X-Gateway-Token` is accepted if present; it is not a substitute for the Bearer 401 tests. | Open check/revoke; only-alias tests used as the 401 bar; skip/xfail; hardcoded tokens. |
 | Durable revoke | A revoked agent stays denied after a **new process** loads the gateway. | In-memory set that clears on restart. |
-| Approve ≠ allow | Escalation returns `approve` or `pending`, never `allow`. A **hard gate** must exist so a runtime cannot execute on approve (pending until operator ACK, or `execution_allowed=false` / equivalent). | Recording `approve` and stopping; treating non-deny as execute. |
+| Approve ≠ allow | HTTP `POST /v1/check` on an escalation tool returns `verdict=approve`, **`pending: true`**, `execution_allowed=false`, never `allow`. Audit SSE `event: audit` includes `reason` and `confidence` when available (`confidence` may be JSON `null` only if there is no score). | Soft-mapping approve to allow; omitting `pending`; SSE without reason/confidence keys. |
 | Cache key | Classifier cache is keyed by canonical fields: `agent_id`, `tool`, `args`, `session_context`, model, temperature, system prompt. **Not request id alone.** | Replaying `eval-001` (or any id) with different args serving a cached allow. |
 
 ## Known-false-negative regressions
@@ -46,11 +46,11 @@ If pytest is red, the MVP is red. Do not relabel failures as expected.
 
 ## Current pytest (honest)
 
-`python3 -m pytest -q` after Backend P0 + this QA lock: **35 passed**. Contract tests hit the live implementation (no xfail):
+`python3 -m pytest -q` after Backend P0 + this QA lock: **37 passed**. Contract tests hit the live implementation (no xfail):
 
 - missing/wrong `Authorization: Bearer` on `/v1/check` and `/v1/revoke*` is 401; optional `X-Gateway-Token` alias if present
 - durable revoke across a new process (`REVOCATION_STORE_PATH`)
-- approve is pending / `execution_allowed=false` (not allow)
+- approve/escalate HTTP path: `pending: true`, never allow; audit SSE exposes `reason` + `confidence`
 - cache key hashes canonical fields, not request id
 - `eval-142`, `eval-176`, `eval-182` must not allow
 

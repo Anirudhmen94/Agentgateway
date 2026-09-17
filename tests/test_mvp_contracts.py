@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import os
 import subprocess
 import sys
@@ -178,7 +179,7 @@ def test_approve_is_not_allow_hard_gate():
         policy=PolicyEngine(load_agents(), enforce_rate_limit=False),
     )
     assert decision.verdict != "allow"
-    assert decision.verdict in ("approve", "pending", "deny")
+    assert decision.verdict == "approve"
     assert execution_allowed(decision.verdict) is False
     assert decision.execution_allowed is False
     assert decision.pending is True
@@ -186,6 +187,98 @@ def test_approve_is_not_allow_hard_gate():
     assert public["pending"] is True
     assert public["execution_allowed"] is False
     assert public["state"] == "pending_approval"
+
+
+def test_http_escalate_returns_pending_true_never_allow():
+    """Approve/escalate HTTP path is a hard gate, never a soft-allow."""
+    clear_revocations()
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {TEST_TOKEN}"}
+    cases = [
+        {
+            "agent_id": "support-triage",
+            "tool": "ticket.refund",
+            "args": {"ticket_id": "TCK-1", "amount": 12},
+            "session_context": "Customer wants a refund.",
+        },
+        {
+            "agent_id": "invoice-processing",
+            "tool": "payment.initiate",
+            "args": {"invoice_id": "INV-1", "amount": 50},
+            "session_context": "Pay the vendor.",
+        },
+        {
+            "agent_id": "code-review",
+            "tool": "pr.merge",
+            "args": {"repo": "app-web", "pr_number": 9},
+            "session_context": "Merge the assigned PR.",
+        },
+    ]
+    for payload in cases:
+        res = client.post("/v1/check", headers=headers, json=payload)
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["verdict"] == "approve", payload["tool"]
+        assert body["verdict"] != "allow"
+        assert body["pending"] is True
+        assert body["pending"] is not False
+        assert body["execution_allowed"] is False
+        assert body["state"] == "pending_approval"
+        # Runtime contract: pending and execute must never both be true.
+        assert not (body["pending"] and body["execution_allowed"])
+
+
+def test_audit_sse_exposes_reason_and_confidence():
+    """SSE audit bus (same records as GET /v1/audit/stream) exposes reason + confidence."""
+    import inspect as inspect_mod
+
+    import src.app as appmod
+    from src.gateway import subscribe_audit
+
+    source = inspect_mod.getsource(appmod.audit_stream)
+    assert "event: audit" in source
+    assert "json.dumps(record)" in source
+
+    clear_revocations()
+    headers = {"Authorization": f"Bearer {TEST_TOKEN}"}
+    client = TestClient(app)
+    missing = client.get("/v1/audit/stream")
+    assert missing.status_code == 401
+    wrong = client.get("/v1/audit/stream", headers={"Authorization": "Bearer wrong-token"})
+    assert wrong.status_code == 401
+
+    seen: list[dict] = []
+    unsub = subscribe_audit(seen.append)
+    try:
+        res = client.post(
+            "/v1/check",
+            headers=headers,
+            json={
+                "agent_id": "support-triage",
+                "tool": "ticket.refund",
+                "args": {"ticket_id": "TCK-sse", "amount": 12},
+                "session_context": "Customer wants a refund.",
+            },
+        )
+    finally:
+        unsub()
+    assert res.status_code == 200
+    assert res.json()["pending"] is True
+    assert res.json()["verdict"] != "allow"
+
+    approve_recs = [r for r in seen if r.get("verdict") == "approve"]
+    assert approve_recs, "audit subscriber (SSE feed) got no approve record"
+    rec = approve_recs[-1]
+    wire = json.dumps(rec)
+    parsed = json.loads(wire)
+    assert "reason" in parsed
+    assert parsed["reason"], "audit SSE payload omitted reason"
+    assert "confidence" in parsed
+    if parsed["confidence"] is not None:
+        assert isinstance(parsed["confidence"], (int, float))
+        assert 0.0 <= float(parsed["confidence"]) <= 1.0
+    assert parsed["pending"] is True
+    assert parsed["execution_allowed"] is False
 
 
 def test_cache_key_not_request_id_alone(tmp_path, monkeypatch):
