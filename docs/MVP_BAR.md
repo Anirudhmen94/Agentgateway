@@ -46,12 +46,14 @@ If pytest is red, the MVP is red. Do not relabel failures as expected.
 
 ## Current pytest (honest)
 
-`python3 -m pytest -q` after Backend P0 (`70e805a`) + this QA lock: **40 passed**. Contract tests hit the live implementation (no xfail):
+`python3 -m pytest -q` after Backend P0 + QA lock + SRE: contract tests hit the live implementation (no xfail):
 
+- `GET /health` liveness and `GET /ready` readiness (distinct bodies; ready is not a 404)
 - missing/wrong `Authorization: Bearer` on `/v1/check` and `/v1/revoke*` is 401; optional `X-Gateway-Token` alias if present
-- durable revoke across a new process (`REVOCATION_STORE_PATH`)
+- durable revoke across a new process (`REVOCATION_STORE_PATH`), including an HTTP process restart
 - approve/escalate HTTP path: `pending: true`, never allow; audit SSE exposes `reason` + `confidence`
 - cache key hashes canonical fields, not request id
 - `eval-142`, `eval-176`, `eval-182` must not allow
+- fallback / fail-closed classifier `model` fields are never counted as grok-4.6
 
 Remaining red-team items (not silent greens): paraphrases and pagination in `data/eval_adversarial.jsonl`, grok-4.6 slice NOT RUN without `XAI_API_KEY`, non-compliant runtimes that ignore `pending`. See `docs/RED_TEAM.md`.

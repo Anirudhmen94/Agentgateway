@@ -14,7 +14,7 @@ For every tool call the gateway returns **allow**, **deny**, or **approve** (hum
 4. **Approve is not allow.** `approve` is `pending: true` and `execution_allowed: false` until an operator ACK. Recording a verdict without that hard gate is a fail.
 5. **Audit.** Every decision is appended as one JSON line with the deciding layer, latency, execution gate, and model version when used.
 
-Demo HTTP: mutating/control routes require `Authorization: Bearer <GATEWAY_TOKEN>` (`GATEWAY_TOKEN` from `.env`; optional alias `X-Gateway-Token`). The process listens on `127.0.0.1` unless `GATEWAY_HOST` or `--host` overrides it.
+Demo HTTP: mutating/control routes require `Authorization: Bearer <GATEWAY_TOKEN>` (`GATEWAY_TOKEN` from `.env`; optional alias `X-Gateway-Token`). The process listens on `127.0.0.1` unless `GATEWAY_HOST` or `--host` overrides it. Open probes: `GET /health` (liveness) and `GET /ready` (agent catalog + revocation store). `FAIL_CLOSED` (default 0) is documented in `.env.example`.
 
 ## Threat categories
 

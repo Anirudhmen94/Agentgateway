@@ -115,6 +115,12 @@ class Decision:
     def pending(self) -> bool:
         return is_pending(self.verdict)
 
+    @property
+    def backend(self) -> str:
+        from src.metrics import decision_backend
+
+        return decision_backend(self.model, self.deciding_layer)
+
     def _reason_for_audit(self) -> str | None:
         text = (self.reasoning or self.reason or "").strip()
         return text or None
@@ -133,6 +139,7 @@ class Decision:
             "reason": self._reason_for_audit(),
             "reasoning": self.reasoning,
             "deciding_layer": self.deciding_layer,
+            "backend": self.backend,
             "rule_id": self.rule_id,
             "latency_ms": self.latency_ms,
             "model": self.model,
@@ -151,6 +158,7 @@ class Decision:
             "pending": self.pending,
             "execution_allowed": self.execution_allowed,
             "deciding_layer": self.deciding_layer,
+            "backend": self.backend,
             "rule_id": self.rule_id,
             "category": self.category,
             "reason": self._reason_for_audit(),

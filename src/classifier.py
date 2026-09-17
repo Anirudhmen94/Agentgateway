@@ -15,12 +15,20 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from src.metrics import (
+    BACKEND_GROK,
+    FAIL_CLOSED_MODEL,
+    FALLBACK_MODEL,
+    GROK_MODEL,
+    decision_backend,
+    fail_closed_enabled,
+)
 from src.models import ClassifierResult, ToolRequest
 from src.policy import load_agents
 
 load_dotenv()
 
-MODEL_NAME = "grok-4.6"
+MODEL_NAME = GROK_MODEL
 TEMPERATURE = 0.0
 TIMEOUT_S = 20.0
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache" / "classifier"
@@ -397,12 +405,18 @@ def classify(
         "allowed_tools": [],
     }
 
+    closed = fail_closed_enabled()
     if use_cache:
         path = _cache_path(request)
         if path.exists():
             cached = json.loads(path.read_text())
-            _cache_hits += 1
-            return ClassifierResult(**{**cached, "cached": True})
+            cached_model = cached.get("model")
+            cached_backend = decision_backend(cached_model, "model")
+            if closed and cached_backend != BACKEND_GROK:
+                pass
+            else:
+                _cache_hits += 1
+                return ClassifierResult(**{**cached, "cached": True})
 
     _cache_misses += 1
     user_payload = {
@@ -418,8 +432,22 @@ def classify(
     }
 
     payload: dict[str, Any] | None = None
-    model_used = f"{MODEL_NAME}-local-fallback"
+    model_used = FALLBACK_MODEL
     api_key = os.getenv("XAI_API_KEY") or ""
+    if closed and not api_key.strip():
+        return ClassifierResult(
+            verdict="deny",
+            category="scope_creep",
+            confidence=1.0,
+            reasoning=(
+                "FAIL_CLOSED: hosted grok-4.6 classifier is unavailable. "
+                "Local heuristic fallback is not grok-4.6 and is not used."
+            ),
+            model=FAIL_CLOSED_MODEL,
+            temperature=TEMPERATURE,
+            timestamp_utc=_utc_now(),
+            cached=False,
+        )
     if api_key.strip():
         with _sem():
             last_err: BaseException | None = None
@@ -446,8 +474,22 @@ def classify(
                 payload = None
 
     if payload is None:
+        if closed:
+            return ClassifierResult(
+                verdict="deny",
+                category="scope_creep",
+                confidence=1.0,
+                reasoning=(
+                    "FAIL_CLOSED: hosted grok-4.6 classifier failed. "
+                    "Local heuristic fallback is not grok-4.6 and is not used."
+                ),
+                model=FAIL_CLOSED_MODEL,
+                temperature=TEMPERATURE,
+                timestamp_utc=_utc_now(),
+                cached=False,
+            )
         payload = _local_classify(request, agent)
-        model_used = f"{MODEL_NAME}-local-fallback"
+        model_used = FALLBACK_MODEL
 
     result = ClassifierResult(
         verdict=payload["verdict"],

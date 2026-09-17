@@ -19,6 +19,8 @@ def _empty_confusion():
 
 def test_backend_labels_fallback_vs_grok():
     assert classifier_backend("grok-4.6-local-fallback", "model") == BACKEND_FALLBACK
+    assert classifier_backend("local-fallback", "model") == BACKEND_FALLBACK
+    assert classifier_backend("fail-closed", "model") != BACKEND_GROK
     assert classifier_backend("grok-4.6", "model") == BACKEND_GROK
     assert classifier_backend(None, "policy") == "policy"
 

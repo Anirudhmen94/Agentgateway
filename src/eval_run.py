@@ -16,6 +16,13 @@ from typing import Any
 
 from src.classifier import cache_stats, reset_cache_stats
 from src.gateway import handle
+from src.metrics import (
+    BACKEND_FAIL_CLOSED,
+    BACKEND_FALLBACK,
+    BACKEND_GROK,
+    BACKEND_POLICY,
+    decision_backend,
+)
 from src.models import CATEGORIES
 from src.policy import PolicyEngine, load_agents
 
@@ -34,10 +41,9 @@ POSITIVE_LABELS = {
     "credential_misuse",
 }
 
-BACKEND_FALLBACK = "fallback"
-BACKEND_GROK = "grok"
-BACKEND_POLICY = "policy"
-BACKEND_OTHER = "other"
+def classifier_backend(model: str | None, layer: str | None = None) -> str:
+    """Map a decision to a reporting backend. Never blend fallback with grok."""
+    return decision_backend(model, layer)
 
 
 def _git_sha() -> str:
@@ -57,21 +63,6 @@ def _percentile(values: list[float], p: float) -> float:
     xs = sorted(values)
     idx = min(len(xs) - 1, max(0, int(round((p / 100) * (len(xs) - 1)))))
     return xs[idx]
-
-
-def classifier_backend(model: str | None, layer: str | None = None) -> str:
-    """Map a decision to a reporting backend. Never blend fallback with grok."""
-    if layer == "policy" or not model:
-        if layer == "policy":
-            return BACKEND_POLICY
-    name = (model or "").lower()
-    if "fallback" in name or "local" in name:
-        return BACKEND_FALLBACK
-    if name.startswith("grok") or "grok-4.6" in name:
-        return BACKEND_GROK
-    if layer == "model" and name:
-        return BACKEND_OTHER
-    return BACKEND_POLICY
 
 
 def _load(path: Path, limit: int | None) -> list[dict[str, Any]]:
@@ -217,6 +208,8 @@ def _metric_noun(backend: str) -> str:
         return "grok-4.6 detection (API classifier only)"
     if backend == BACKEND_POLICY:
         return "policy-layer catch rate (no classifier)"
+    if backend == BACKEND_FAIL_CLOSED:
+        return "fail-closed denials (not grok-4.6, not model quality)"
     if backend == "unsplit":
         return "unsplit mix — do not cite as model quality"
     return "other-backend catch rate"
@@ -228,6 +221,7 @@ def render(report: dict[str, Any]) -> str:
         BACKEND_FALLBACK: "Agent Trust Gateway scorecard — model=fallback",
         BACKEND_GROK: "Agent Trust Gateway scorecard — model=grok",
         BACKEND_POLICY: "Agent Trust Gateway scorecard — policy only",
+        BACKEND_FAIL_CLOSED: "Agent Trust Gateway scorecard — fail-closed (not grok)",
         "unsplit": "Agent Trust Gateway scorecard — INDEX (not a model grade)",
     }.get(backend, f"Agent Trust Gateway scorecard — model={backend}")
 
@@ -235,7 +229,7 @@ def render(report: dict[str, Any]) -> str:
     if backend == BACKEND_FALLBACK:
         banner = [
             "> **Not grok-4.6. Not model quality.** These numbers are the local keyword/heuristic",
-            "> fallback (`grok-4.6-local-fallback`). Citing them as grok detection is a **FAIL**",
+            "> fallback (`local-fallback`). Citing them as grok detection is a **FAIL**",
             "> on `docs/MVP_BAR.md`.",
             "> This slice includes **only** rows policy sent to the classifier. Policy `clean_allow`",
             "> false negatives never appear here, so 100% on this slice is not overall detection.",

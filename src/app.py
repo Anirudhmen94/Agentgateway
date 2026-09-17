@@ -26,6 +26,7 @@ from src.gateway import (
     unrevoke,
 )
 from src.policy import load_agents
+from src.revocation import get_store
 
 load_dotenv()
 
@@ -75,7 +76,35 @@ def index() -> str:
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    """Liveness: the process is up. Not a substitute for GET /ready."""
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> dict[str, Any]:
+    """Readiness: revocation store and agent catalog are usable."""
+    checks: dict[str, str] = {}
+    errors: list[str] = []
+    try:
+        agents = load_agents()
+        if not agents:
+            raise RuntimeError("agent catalog is empty")
+        checks["agents"] = "ok"
+    except Exception as exc:  # noqa: BLE001 — readiness must never raise 500 as "up"
+        checks["agents"] = "error"
+        errors.append(f"agents: {exc}")
+    try:
+        get_store().all()
+        checks["revocation_store"] = "ok"
+    except Exception as exc:  # noqa: BLE001
+        checks["revocation_store"] = "error"
+        errors.append(f"revocation_store: {exc}")
+    if errors:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not_ready", "checks": checks, "errors": errors},
+        )
+    return {"status": "ready", "checks": checks}
 
 
 @app.get("/v1/agents")

@@ -2,9 +2,13 @@ services:
   gateway:
     build: .
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"  # host localhost default; not 0.0.0.0 on the host
+    volumes:
+      - ./out:/app/out
     environment:
       GATEWAY_HOST: 0.0.0.0  # container override; process default without this env is 127.0.0.1
       GATEWAY_PORT: 8000
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-change-me-before-demo}
       XAI_API_KEY: ${XAI_API_KEY:-}
+      FAIL_CLOSED: ${FAIL_CLOSED:-0}
+      REVOCATION_STORE_PATH: /app/out/revocations.json

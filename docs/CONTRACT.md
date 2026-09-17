@@ -34,12 +34,16 @@ Authorization: Bearer <GATEWAY_TOKEN>
 
 `GATEWAY_TOKEN` is read from `.env` only. Optional alias: `X-Gateway-Token: <GATEWAY_TOKEN>`. SSE clients that cannot set headers may pass `?token=` (same value). Missing or wrong token → **401**. An empty `GATEWAY_TOKEN` is fail-closed (also 401).
 
-Open (demo UI): `GET /`, `GET /health`, `GET /v1/agents`.
+Open (demo UI): `GET /`, `GET /health` (liveness), `GET /ready` (readiness: agent catalog + revocation store), `GET /v1/agents`.
 
 ## Bind address
 
-Process default is **`127.0.0.1`**. Override with `GATEWAY_HOST` or `--host`. Compose sets `0.0.0.0` inside the container so published ports work; that is an explicit override, not the process default.
+Process default is **`127.0.0.1`**. Override with `GATEWAY_HOST` or `--host`. Compose sets `0.0.0.0` inside the container so published ports work; the host mapping is `127.0.0.1:8000` by default.
 
 ## Classifier cache
 
 Cache keys hash canonical `agent_id`, `tool`, `args`, `session_context`, plus model name, temperature, and system prompt. Request id is **not** the key. Same id with different args is a miss; different ids with the same canonical fields may hit.
+
+## Fail-closed vs local fallback
+
+`FAIL_CLOSED` (from `.env`): default `0`. When `1` / `true` / `yes` / `on`, a missing xAI key or a failed grok-4.6 call **denies** instead of running the local heuristic. The classifier `model` field is `fail-closed` or `local-fallback` — never grok-4.6. Audit JSONL and stdout `gateway.decision` lines include `backend` (`policy` | `fallback` | `grok` | `fail-closed`).

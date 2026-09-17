@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -19,6 +21,20 @@ AUDIT_PATH = OUT_DIR / "audit.jsonl"
 
 _lock = threading.Lock()
 _subscribers: list[Callable[[dict[str, Any]], None]] = []
+_decision_log = logging.getLogger("gateway.decision")
+
+
+def _configure_decision_log() -> None:
+    if _decision_log.handlers:
+        return
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    _decision_log.addHandler(handler)
+    _decision_log.setLevel(logging.INFO)
+    _decision_log.propagate = False
+
+
+_configure_decision_log()
 
 
 def _utc_now() -> str:
@@ -60,10 +76,12 @@ def reload_revocation_store() -> None:
 
 def _append_audit(record: dict[str, Any]) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(record, separators=(",", ":"), ensure_ascii=False)
     with _lock:
         with AUDIT_PATH.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record) + "\n")
+            fh.write(line + "\n")
         listeners = list(_subscribers)
+    _decision_log.info(line)
     for cb in listeners:
         try:
             cb(record)

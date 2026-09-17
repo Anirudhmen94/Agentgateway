@@ -29,13 +29,12 @@ Policy is cheap and boring on purpose. Most clean, in-scope calls never pay for 
 
 ## What is real / stubbed
 
-Real: policy engine, gateway ordering, JSONL audit, eval harness, `POST /v1/check`, SSE audit feed, demo token auth, loopback bind default, durable revocation, approve as a hard pending gate, canonical classifier cache. Stubbed: operator SSO / out-of-band ACK UI (the API already refuses to treat approve as allow). Classifier calls xAI when `XAI_API_KEY` is set; otherwise a local heuristic fallback so the demo still runs.
+Real: policy engine, gateway ordering, JSONL + stdout structured decision logs, eval harness, `POST /v1/check`, `GET /health` + `GET /ready`, SSE audit feed, demo token auth, loopback bind default, durable revocation, approve as a hard pending gate, canonical classifier cache, optional `FAIL_CLOSED`. Stubbed: operator SSO / out-of-band ACK UI (the API already refuses to treat approve as allow). Classifier calls xAI when `XAI_API_KEY` is set; otherwise a local heuristic fallback so the demo still runs (`model=local-fallback`, never grok).
 
 ## What I would build next
 
 1. Session-level quotas on distinct record ids (red team: paging around bulk limits).
 2. Operator ACK workflow that flips `pending_approval` to allow only after an authenticated human.
-3. Fail-closed classifier mode when the hosted model is required and the key is missing.
 
 ## What I got wrong
 
@@ -51,9 +50,15 @@ Synthetic data only. Control-plane prototype, not a product. No Radware IP.
 python3 -m pip install -r requirements.txt
 cp .env.example .env   # set GATEWAY_TOKEN; optional XAI_API_KEY for grok-4.6
 make run               # http://127.0.0.1:8000 (default bind, not 0.0.0.0)
+curl -sS http://127.0.0.1:8000/health   # liveness {"status":"ok"}
+curl -sS http://127.0.0.1:8000/ready    # readiness {"status":"ready", ...}
 ```
 
+Windows PowerShell: `.\scripts\start.ps1` then `.\scripts\stop.ps1` (127.0.0.1:8000). Second machine: [`docs/SECOND_MACHINE.md`](docs/SECOND_MACHINE.md).
+
 Override bind with `GATEWAY_HOST` / `GATEWAY_PORT` or `python -m src.app --host 0.0.0.0 --port 8000`.
+
+`FAIL_CLOSED=0` (default) uses `local-fallback` when grok-4.6 is unavailable — labeled `backend=fallback`, not model quality. `FAIL_CLOSED=1` denies instead of pretending the heuristic is grok.
 
 Paste `GATEWAY_TOKEN` into the UI. Mutating routes (`POST /v1/check`, `/v1/revoke*`, audit stream) require:
 
@@ -71,5 +76,5 @@ Demo path: sample **benign** (policy allow, execution allowed) → sample **scop
 make test              # policy + gateway + API + P0 + MVP bar (no xfail greens)
 python3 -m src.eval_run --limit 20
 make eval              # 200 + adversarial; split fallback vs grok scorecards
-docker compose up --build   # Compose sets GATEWAY_HOST=0.0.0.0 inside the container
+docker compose up --build   # host publish 127.0.0.1:8000; container GATEWAY_HOST=0.0.0.0
 ```

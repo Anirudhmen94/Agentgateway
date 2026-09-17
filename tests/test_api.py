@@ -8,6 +8,9 @@ def test_health_and_check_benign_and_scope_creep(auth_headers):
     clear_revocations()
     client = TestClient(app)
     assert client.get("/health").json()["status"] == "ok"
+    ready = client.get("/ready")
+    assert ready.status_code == 200
+    assert ready.json()["status"] == "ready"
     page = client.get("/")
     assert page.status_code == 200
     assert "Agent Trust Gateway" in page.text
