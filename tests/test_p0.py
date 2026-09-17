@@ -6,8 +6,8 @@ from fastapi.testclient import TestClient
 from src.app import app
 from src.bind import DEFAULT_HOST, resolve_bind
 from src.classifier import cache_key_for_request, classify
-from src.gateway import clear_revocations, handle, reload_revocation_store, revoke
-from src.models import ToolRequest, execution_allowed, execution_state
+from src.gateway import clear_revocations, handle, reload_revocation_store, revoke, subscribe_audit
+from src.models import Decision, ToolRequest, execution_allowed, execution_state
 from src.policy import PolicyEngine, load_agents
 from src.revocation import RevocationStore
 from tests.conftest import TEST_TOKEN
@@ -128,6 +128,8 @@ def test_approve_is_hard_gate_not_allow():
     public = decision.to_public_dict()
     assert public["execution_allowed"] is False
     assert public["state"] == "pending_approval"
+    assert public["pending"] is True
+    assert public["verdict"] != "allow"
 
 
 def test_classifier_approve_also_blocks_execution():
@@ -158,6 +160,8 @@ def test_classifier_approve_also_blocks_execution():
     assert decision.verdict == "approve"
     assert decision.execution_allowed is False
     assert decision.state == "pending_approval"
+    assert decision.pending is True
+    assert decision.to_public_dict()["pending"] is True
 
 
 def test_cache_key_hashes_canonical_fields_not_request_id():
@@ -254,3 +258,80 @@ def test_api_exposes_pending_gate(auth_headers):
     assert body["verdict"] == "approve"
     assert body["execution_allowed"] is False
     assert body["state"] == "pending_approval"
+    assert body["pending"] is True
+    assert body["pending"] is not False
+    assert "allow" != body["verdict"]
+
+
+def test_audit_events_include_reason_and_confidence(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.gateway.AUDIT_PATH", tmp_path / "audit.jsonl")
+    seen: list[dict] = []
+    unsub = subscribe_audit(seen.append)
+    policy = PolicyEngine(load_agents(), enforce_rate_limit=False)
+    try:
+        handle(
+            {
+                "id": "aud-allow",
+                "agent_id": "support-triage",
+                "tool": "ticket.get",
+                "args": {"ticket_id": "TCK-1042"},
+                "session_context": "Open the ticket and classify severity.",
+            },
+            audit=True,
+            use_cache=False,
+            policy=policy,
+        )
+        handle(
+            {
+                "id": "aud-approve",
+                "agent_id": "support-triage",
+                "tool": "ticket.refund",
+                "args": {"ticket_id": "TCK-1", "amount": 12},
+                "session_context": "Customer wants a refund.",
+            },
+            audit=True,
+            use_cache=False,
+            policy=policy,
+        )
+    finally:
+        unsub()
+    assert len(seen) == 2
+    allow_rec, approve_rec = seen
+    for rec in seen:
+        assert "reason" in rec
+        assert rec["reason"]
+        assert "confidence" in rec
+        assert rec["confidence"] is None or isinstance(rec["confidence"], (int, float))
+        if rec["confidence"] is not None:
+            assert 0.0 <= float(rec["confidence"]) <= 1.0
+    assert allow_rec["pending"] is False
+    assert allow_rec["verdict"] == "allow"
+    assert approve_rec["pending"] is True
+    assert approve_rec["verdict"] == "approve"
+    assert approve_rec["execution_allowed"] is False
+
+
+def test_audit_does_not_invent_confidence():
+    decision = Decision(
+        request_id="no-conf",
+        agent_id="support-triage",
+        tool="ticket.get",
+        verdict="deny",
+        deciding_layer="policy",
+        rule_id="agent_revoked",
+        category="scope_creep",
+        reason="",
+        confidence=None,
+        reasoning=None,
+        latency_ms=1.0,
+        model=None,
+        temperature=None,
+        timestamp_utc="2026-01-01T00:00:00Z",
+    )
+    rec = decision.to_audit_dict()
+    assert rec["confidence"] is None
+    assert rec["reason"] is None
+    assert rec["pending"] is False
+    public = decision.to_public_dict()
+    assert public["confidence"] is None
+    assert public["pending"] is False

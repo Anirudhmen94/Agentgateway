@@ -199,8 +199,8 @@
       auditSource.addEventListener("audit", (ev) => {
         const row = JSON.parse(ev.data);
         const el = document.createElement("div");
-        const gate = row.execution_allowed ? "execute" : (row.state || "blocked");
-        el.innerHTML = `<strong>${row.verdict}</strong> ${row.agent_id} ${row.tool} · ${gate} · ${row.deciding_layer} · ${row.category || row.rule_id}`;
+        const gate = row.pending ? "pending" : (row.execution_allowed ? "execute" : "blocked");
+        el.innerHTML = `<strong>${row.verdict}</strong> ${row.agent_id} ${row.tool} · ${gate} · ${row.deciding_layer} · ${row.category || row.rule_id}<div>${row.reason || ""} ${row.confidence == null ? "" : "· conf " + row.confidence}</div>`;
         feed.prepend(el);
       });
     }
@@ -264,9 +264,9 @@
       }
       const data = await res.json();
       const cls = data.verdict || "deny";
-      const gate = data.execution_allowed
-        ? "execution allowed"
-        : (data.state === "pending_approval" ? "pending — do not execute" : "blocked — do not execute");
+      const gate = data.pending
+        ? "pending — do not execute"
+        : (data.execution_allowed ? "execution allowed" : "blocked — do not execute");
       $("result").innerHTML = `
         <span class="pill ${cls}">${data.verdict}</span>
         <span class="pill">${data.category || "—"}</span>

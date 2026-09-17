@@ -28,6 +28,7 @@ def test_health_and_check_benign_and_scope_creep(auth_headers):
     assert body["verdict"] == "allow"
     assert body["execution_allowed"] is True
     assert body["state"] == "allowed"
+    assert body["pending"] is False
     assert body["category"] == "benign"
     assert body["deciding_layer"] == "policy"
 

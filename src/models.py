@@ -30,6 +30,11 @@ def execution_state(verdict: str) -> str:
     return "denied"
 
 
+def is_pending(verdict: str) -> bool:
+    """Approve/escalate is a hard pending gate. Never equivalent to allow."""
+    return verdict == "approve"
+
+
 @dataclass
 class ToolRequest:
     id: str
@@ -106,6 +111,14 @@ class Decision:
     def state(self) -> str:
         return execution_state(self.verdict)
 
+    @property
+    def pending(self) -> bool:
+        return is_pending(self.verdict)
+
+    def _reason_for_audit(self) -> str | None:
+        text = (self.reasoning or self.reason or "").strip()
+        return text or None
+
     def to_public_dict(self) -> dict[str, Any]:
         return {
             "request_id": self.request_id,
@@ -113,9 +126,11 @@ class Decision:
             "tool": self.tool,
             "verdict": self.verdict,
             "state": self.state,
+            "pending": self.pending,
             "execution_allowed": self.execution_allowed,
             "category": self.category,
             "confidence": self.confidence,
+            "reason": self._reason_for_audit(),
             "reasoning": self.reasoning,
             "deciding_layer": self.deciding_layer,
             "rule_id": self.rule_id,
@@ -133,10 +148,13 @@ class Decision:
             "tool": self.tool,
             "verdict": self.verdict,
             "state": self.state,
+            "pending": self.pending,
             "execution_allowed": self.execution_allowed,
             "deciding_layer": self.deciding_layer,
             "rule_id": self.rule_id,
             "category": self.category,
+            "reason": self._reason_for_audit(),
+            "confidence": self.confidence,
             "latency_ms": round(self.latency_ms, 3),
             "model": self.model,
             "cached": self.cached,

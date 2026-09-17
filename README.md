@@ -4,7 +4,7 @@ Agents get tools. Tools do damage when the call no longer matches the job the ag
 
 ## What it does
 
-- Every request returns **allow**, **deny**, or **approve**, plus an execution gate: only `allow` has `execution_allowed=true`. `approve` is **pending_approval** and must not run. Contract: [`docs/CONTRACT.md`](docs/CONTRACT.md).
+- Every request returns **allow**, **deny**, or **approve**, plus an execution gate: only `allow` has `execution_allowed=true`. Approve/escalate responses include **`pending: true`** and must not run. Contract: [`docs/CONTRACT.md`](docs/CONTRACT.md).
 - Revocation is checked first (durable file store under `out/revocations.json`).
 - A deterministic policy layer decides unknown tools, allow-lists, rate limits, escalation tools, and obvious over-collection with no model and no network.
 - Only leftovers go to **grok-4.6** (temperature 0, JSON schema). One question: does this call serve the registered purpose?

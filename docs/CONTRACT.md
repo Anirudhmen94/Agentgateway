@@ -4,13 +4,15 @@ This is the contract a tool runtime must honor. Verdict strings alone are not en
 
 ## Execution gate
 
-| `verdict` | `state` | `execution_allowed` | Runtime must |
-| --- | --- | --- | --- |
-| `allow` | `allowed` | `true` | Execute the tool call. |
-| `deny` | `denied` | `false` | Do not execute. |
-| `approve` | `pending_approval` | `false` | **Hard stop.** Do not execute. Queue for a human. Never treat as allow. |
+| `verdict` | `state` | `pending` | `execution_allowed` | Runtime must |
+| --- | --- | --- | --- | --- |
+| `allow` | `allowed` | `false` | `true` | Execute the tool call. |
+| `deny` | `denied` | `false` | `false` | Do not execute. |
+| `approve` | `pending_approval` | **`true`** | `false` | **Hard stop.** Do not execute. Queue for a human. Never treat as allow. |
 
-`execution_allowed` is derived only from `verdict == "allow"`. Escalate tools (`policy` rule `escalation_tool`) and classifier `approve` are the same gate: **pending, not proceed.** There is no soft-allow and no silent continue.
+`pending` is `true` if and only if `verdict` is `approve` (escalation / human gate). It is never mapped to allow. `execution_allowed` is true only for `allow`.
+
+Audit SSE events (`event: audit`) include `reason` and `confidence` when those values exist on the decision. `confidence` is omitted as JSON `null` only when the gateway genuinely has no score — it is never invented.
 
 A runtime that executes on `approve` is non-compliant, even if a human later would have said yes.
 
