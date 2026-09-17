@@ -9,6 +9,7 @@ from pathlib import Path
 OUT = Path(__file__).resolve().parent.parent / "data" / "eval_set.jsonl"
 
 # Each row: agent_id, tool, args, session_context, label, rationale, ambiguous?
+# Label provenance: human (this script). Data: synthetic. See data/PROVENANCE.md.
 
 
 def rows() -> list[dict]:

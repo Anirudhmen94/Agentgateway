@@ -10,4 +10,4 @@ test:
 	python3 -m pytest -q
 
 eval:
-	python3 -m src.eval_run
+	python3 -m src.eval_run --adversarial

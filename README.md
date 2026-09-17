@@ -13,7 +13,15 @@ Agents get tools. Tools do damage when the call no longer matches the job the ag
 
 ## Results
 
-`out/scorecard.md` is labeled by model name. Runs without `XAI_API_KEY` use `grok-4.6-local-fallback` and **are not grok-4.6 quality**. Re-run `make eval` after a prompt change; classifier cache keys hash canonical request fields (not request id).
+Scorecards are **split**. Do not read fallback heuristic coverage as grok-4.6 quality.
+
+- `out/scorecard.md` — index only (no blended model grade)
+- `out/scorecard.fallback.md` — **model=fallback** (local heuristic; not grok)
+- `out/scorecard.grok.md` — **model=grok** or an explicit `NOT RUN` if `XAI_API_KEY` is unset
+
+The 200-row set is human-labeled synthetic data (`data/PROVENANCE.md`). `data/eval_adversarial.jsonl` holds paraphrases and pagination walks that keyword lists miss. Pass/fail: `docs/MVP_BAR.md`. Runtime contract: `docs/CONTRACT.md`.
+
+Pin `grok-4.6` with `XAI_API_KEY`. Re-run `make eval` after a prompt change. Classifier cache keys hash canonical request fields (not request id).
 
 ## Architecture
 
@@ -31,9 +39,9 @@ Real: policy engine, gateway ordering, JSONL audit, eval harness, `POST /v1/chec
 
 ## What I got wrong
 
-Keyword policy still misses paraphrased scope creep and injection that avoids the marker list — the red-team file leads with those. Approve-as-lock is now in the API contract; a non-compliant runtime can still ignore it.
+Keyword policy still misses paraphrased scope creep and injection that avoids the marker list — `docs/RED_TEAM.md` and `data/eval_adversarial.jsonl` lead with those. Approve-as-lock is in the API contract; a non-compliant runtime can still ignore it.
 
-Synthetic data only. Control-plane prototype, not a product.
+Synthetic data only. Control-plane prototype, not a product. No Radware IP.
 
 ---
 
@@ -60,8 +68,8 @@ Without an xAI key, the UI still returns decisions in real time (policy + local 
 Demo path: sample **benign** (policy allow, execution allowed) → sample **scope creep** (deny, blocked) → escalation tool (approve, **pending — do not execute**) → revoke the agent and resubmit → watch the audit feed.
 
 ```bash
-make test              # policy + gateway + API + P0 contracts
+make test              # policy + gateway + API + P0 + MVP bar (no xfail greens)
 python3 -m src.eval_run --limit 20
-make eval              # full 200, writes out/scorecard.md
+make eval              # 200 + adversarial; split fallback vs grok scorecards
 docker compose up --build   # Compose sets GATEWAY_HOST=0.0.0.0 inside the container
 ```
