@@ -46,12 +46,12 @@ If pytest is red, the MVP is red. Do not relabel failures as expected.
 
 ## Current pytest (honest)
 
-`python3 -m pytest -q` on this QA revision: **8 failed, 14 passed**. Failures are the bar, not xfails:
+`python3 -m pytest -q` after Backend P0 + this QA lock: **35 passed**. Contract tests hit the live implementation (no xfail):
 
-- `eval-142`, `eval-176`, `eval-182` still `allow` (`clean_allow`)
-- `/v1/check` and revoke* return 200 without `GATEWAY_TOKEN`
-- revoke does not survive a new process
-- `approve` has no hard execute gate
-- classifier cache key is request id, not canonical fields
+- 401 without / with wrong `GATEWAY_TOKEN` on `/v1/check` and `/v1/revoke*`
+- durable revoke across a new process (`REVOCATION_STORE_PATH`)
+- approve is pending / `execution_allowed=false` (not allow)
+- cache key hashes canonical fields, not request id
+- `eval-142`, `eval-176`, `eval-182` must not allow
 
-Passing tests cover policy/gateway smoke, adversarial corpus provenance + keyword-miss shape, and split scorecard labeling (`model=fallback` vs `model=grok` / NOT RUN).
+Remaining red-team items (not silent greens): paraphrases and pagination in `data/eval_adversarial.jsonl`, grok-4.6 slice NOT RUN without `XAI_API_KEY`, non-compliant runtimes that ignore `pending`. See `docs/RED_TEAM.md`.

@@ -71,6 +71,7 @@ def test_index_omits_blended_model_quality():
     assert "model quality" in text.lower()
     assert "NOT RUN" in text
     assert "Unsplit catch rate is omitted" in text
+    assert "all gold-benign" in text
     grok = render_grok_not_run("deadbeef", "2026-09-17T00:00:00Z")
     assert "model=grok" in grok
     assert "NOT RUN" in grok

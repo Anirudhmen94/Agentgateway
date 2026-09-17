@@ -355,9 +355,14 @@ def render_index(report: dict[str, Any], *, grok_ran: bool) -> str:
     fb = (report.get("slices") or {}).get(BACKEND_FALLBACK)
     pol = (report.get("slices") or {}).get(BACKEND_POLICY)
     if pol:
-        lines.append(
-            f"- Policy-only slice catch rate: {pol['detection_rate']:.1%} on {pol['n']} rows (not a model score)."
-        )
+        if pol.get("positive_n"):
+            lines.append(
+                f"- Policy-only slice catch rate: {pol['detection_rate']:.1%} on {pol['n']} rows (not a model score)."
+            )
+        else:
+            lines.append(
+                f"- Policy-only slice: {pol['n']} rows, all gold-benign (no attack catch-rate; not a model score)."
+            )
     if fb:
         lines.append(
             f"- Fallback slice catch rate: {fb['detection_rate']:.1%} on {fb['n']} classifier rows (**heuristic coverage only**)."
