@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+out/*
+!out/scorecard.md
+.cache/
+.pytest_cache/
+*.egg-info/
+.coverage
+htmlcov/
