@@ -11,8 +11,8 @@
 - Metric meaning: heuristic coverage (not grok-4.6, not model quality)
 - Temperature: `0`
 - Eval set: `eval_set.jsonl` (n=107)
-- Git commit: `1eeffa8`
-- UTC run time: 2026-09-17T22:18:28Z
+- Git commit: `c0ba4b3`
+- UTC run time: 2026-09-17T22:18:47Z
 - Cache: 107 hits / 0 misses (cached rows excluded from latency)
 
 **Catch rate** (heuristic coverage (not grok-4.6, not model quality); non-benign deny/approve/pending): 100.0%
