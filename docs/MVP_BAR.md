@@ -16,7 +16,7 @@ This bar is for the locked prototype on `cursor/agent-trust-gateway-e038`. It do
 
 | Check | Pass | Fail |
 | --- | --- | --- |
-| Auth | With `GATEWAY_TOKEN` set from the environment, `POST /v1/check` and `POST /v1/revoke*` return **401** when the token is missing or wrong. Secrets stay in `.env`, never in git. | Open check/revoke on a shared port; skip/xfail; hardcoded tokens. |
+| Auth | Primary header is `Authorization: Bearer <GATEWAY_TOKEN>` from `.env`. Missing or wrong **Bearer** on `POST /v1/check` and `POST /v1/revoke*` is **401**. Optional alias `X-Gateway-Token` is accepted if present; it is not a substitute for the Bearer 401 tests. | Open check/revoke; only-alias tests used as the 401 bar; skip/xfail; hardcoded tokens. |
 | Durable revoke | A revoked agent stays denied after a **new process** loads the gateway. | In-memory set that clears on restart. |
 | Approve ≠ allow | Escalation returns `approve` or `pending`, never `allow`. A **hard gate** must exist so a runtime cannot execute on approve (pending until operator ACK, or `execution_allowed=false` / equivalent). | Recording `approve` and stopping; treating non-deny as execute. |
 | Cache key | Classifier cache is keyed by canonical fields: `agent_id`, `tool`, `args`, `session_context`, model, temperature, system prompt. **Not request id alone.** | Replaying `eval-001` (or any id) with different args serving a cached allow. |
@@ -48,7 +48,7 @@ If pytest is red, the MVP is red. Do not relabel failures as expected.
 
 `python3 -m pytest -q` after Backend P0 + this QA lock: **35 passed**. Contract tests hit the live implementation (no xfail):
 
-- 401 without / with wrong `GATEWAY_TOKEN` on `/v1/check` and `/v1/revoke*`
+- missing/wrong `Authorization: Bearer` on `/v1/check` and `/v1/revoke*` is 401; optional `X-Gateway-Token` alias if present
 - durable revoke across a new process (`REVOCATION_STORE_PATH`)
 - approve is pending / `execution_allowed=false` (not allow)
 - cache key hashes canonical fields, not request id

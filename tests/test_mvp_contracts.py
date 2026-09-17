@@ -30,39 +30,91 @@ def _check_body() -> dict:
     }
 
 
-def test_check_and_revoke_401_without_gateway_token():
+REVOKE_PATHS = (
+    ("/v1/revoke", {"agent_id": "support-triage"}),
+    ("/v1/unrevoke", {"agent_id": "support-triage"}),
+    ("/v1/revoke/clear", None),
+)
+
+
+def _post(client: TestClient, path: str, json_body: dict | None, headers: dict | None = None):
+    kwargs: dict = {"headers": headers or {}}
+    if json_body is not None:
+        kwargs["json"] = json_body
+    return client.post(path, **kwargs)
+
+
+def test_missing_bearer_401_on_check_and_revoke_star():
+    """Primary contract: no Authorization: Bearer → 401. Alias is not sent."""
     client = TestClient(app)
     check = client.post("/v1/check", json=_check_body())
     assert check.status_code == 401, (
-        f"/v1/check without token returned {check.status_code}; MVP requires 401."
+        f"/v1/check without Bearer returned {check.status_code}; MVP requires 401."
     )
-    for path in ("/v1/revoke", "/v1/unrevoke"):
-        r = client.post(path, json={"agent_id": "support-triage"})
-        assert r.status_code == 401, f"{path} without token returned {r.status_code}; want 401"
-    clear = client.post("/v1/revoke/clear")
-    assert clear.status_code == 401, f"/v1/revoke/clear without token returned {clear.status_code}; want 401"
+    assert "bearer" in (check.headers.get("www-authenticate") or "").lower()
+    for path, body in REVOKE_PATHS:
+        r = _post(client, path, body)
+        assert r.status_code == 401, f"{path} without Bearer returned {r.status_code}; want 401"
+        assert "bearer" in (r.headers.get("www-authenticate") or "").lower()
 
 
-def test_check_and_revoke_401_wrong_token():
+def test_wrong_bearer_401_on_check_and_revoke_star():
+    """Primary contract: Authorization: Bearer <wrong> → 401 on check and revoke*."""
     client = TestClient(app)
     headers = {"Authorization": "Bearer wrong-token"}
     check = client.post("/v1/check", json=_check_body(), headers=headers)
+    assert check.status_code == 401, (
+        f"/v1/check with wrong Bearer returned {check.status_code}; MVP requires 401."
+    )
+    for path, body in REVOKE_PATHS:
+        r = _post(client, path, body, headers)
+        assert r.status_code == 401, f"{path} with wrong Bearer returned {r.status_code}; want 401"
+
+
+def test_non_bearer_authorization_is_401_on_check_and_revoke_star():
+    """Basic (or any non-Bearer scheme) is not the contract."""
+    client = TestClient(app)
+    headers = {"Authorization": f"Basic {TEST_TOKEN}"}
+    check = client.post("/v1/check", json=_check_body(), headers=headers)
     assert check.status_code == 401
-    revoked = client.post("/v1/revoke", json={"agent_id": "support-triage"}, headers=headers)
-    assert revoked.status_code == 401
+    for path, body in REVOKE_PATHS:
+        r = _post(client, path, body, headers)
+        assert r.status_code == 401, f"{path} accepted non-Bearer Authorization"
 
 
-def test_check_accepts_configured_token(auth_headers):
+def test_primary_bearer_token_succeeds_on_check_and_revoke_star():
     clear_revocations()
     client = TestClient(app)
-    check = client.post("/v1/check", json=_check_body(), headers=auth_headers)
+    headers = {"Authorization": f"Bearer {TEST_TOKEN}"}
+    check = client.post("/v1/check", json=_check_body(), headers=headers)
     assert check.status_code == 200, check.text
     body = check.json()
     assert body["verdict"] in ("allow", "deny", "approve", "pending")
-    alias = client.post(
+    revoked = client.post("/v1/revoke", json={"agent_id": "support-triage"}, headers=headers)
+    assert revoked.status_code == 200
+    unrevoked = client.post("/v1/unrevoke", json={"agent_id": "support-triage"}, headers=headers)
+    assert unrevoked.status_code == 200
+    cleared = client.post("/v1/revoke/clear", headers=headers)
+    assert cleared.status_code == 200
+
+
+def test_optional_x_gateway_token_alias_if_present():
+    """Alias is optional. If the header is present, the same token value must work.
+
+    This does not replace the Bearer 401 tests.
+    """
+    client = TestClient(app)
+    ok = client.post(
         "/v1/check", json=_check_body(), headers={"X-Gateway-Token": TEST_TOKEN}
     )
-    assert alias.status_code == 200
+    assert ok.status_code == 200, ok.text
+    bad = client.post(
+        "/v1/check", json=_check_body(), headers={"X-Gateway-Token": "wrong-token"}
+    )
+    assert bad.status_code == 401
+    for path, body in REVOKE_PATHS:
+        r = _post(client, path, body, {"X-Gateway-Token": TEST_TOKEN})
+        assert r.status_code == 200, f"{path} rejected optional X-Gateway-Token alias"
 
 
 def test_durable_revoke_across_restart(tmp_path, monkeypatch):

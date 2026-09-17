@@ -18,6 +18,14 @@ def load_eval_row(eid: str, path: Path = EVAL_SET) -> dict:
 
 
 def auth_headers(token: str | None) -> dict[str, str]:
+    """Primary contract: Authorization: Bearer <GATEWAY_TOKEN>."""
     if not token:
         return {}
-    return {"Authorization": f"Bearer {token}", "X-Gateway-Token": token}
+    return {"Authorization": f"Bearer {token}"}
+
+
+def alias_headers(token: str | None) -> dict[str, str]:
+    """Optional alias only. Do not use this as the primary contract."""
+    if not token:
+        return {}
+    return {"X-Gateway-Token": token}
