@@ -361,8 +361,10 @@
     function fillTools() {
       const agent = agents.find(a => a.id === $("agent").value);
       if (!agent) return;
+      const currentTool = $("tool").value;
       const tools = [...agent.allowed_tools, ...agent.escalation];
       $("tool").innerHTML = tools.map(t => `<option>${esc(t)}</option>`).join("");
+      if (tools.includes(currentTool)) $("tool").value = currentTool;
       $("purpose").textContent = agent.declared_purpose;
       $("revoked-flag").textContent = agent.revoked ? "REVOKED" : "";
     }
