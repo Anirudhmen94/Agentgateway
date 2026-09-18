@@ -49,7 +49,7 @@ If pytest is red, the MVP is red. Do not relabel failures as expected.
 
 ## Current pytest (honest)
 
-P2 policy signals close the adversarial FN classes without changing gold labels. Full `python3 -m pytest -q` count is recorded after the run (see the PR). grok-4.6 remains **NOT RUN** without `XAI_API_KEY`; do not treat fallback or policy catch rate as grok detection. Closed classes (`eval-142` / `176` / `182`) and quota-order QA stay green. `tests/test_quota.py` is unchanged.
+`python3 -m pytest -q` after P2 (`671f769`): **78 passed, 0 failed** (no xfail), 1 warning (Starlette `BlockingPortal` deprecation). FN classes `granted_tool_misuse` / `pagination_exfil` / `paraphrase_exfil` / `paraphrase_injection` / `paraphrase_scope` plus the bulk aggregate are green without watering down labels. Closed classes (`eval-142` / `176` / `182`) and quota-order QA stay green. `tests/test_quota.py` is unchanged. grok-4.6 remains **NOT RUN** without `XAI_API_KEY`; do not treat this pytest green as grok detection.
 
 - `GET /health` liveness and `GET /ready` readiness (distinct bodies; ready is not a 404)
 - missing/wrong `Authorization: Bearer` on `/v1/check` and `/v1/revoke*` is 401; optional `X-Gateway-Token` alias if present
