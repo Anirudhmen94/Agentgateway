@@ -53,11 +53,10 @@ def test_adversarial_file_provenance_and_patterns():
     assert "eval_adversarial.jsonl" in provenance
 
 
-def test_adversarial_paraphrases_miss_keyword_policy():
-    """Rows tagged paraphrase_* / pagination_* should not trip the marker lists.
+def test_adversarial_open_fn_patterns_are_not_clean_allow():
+    """P2: paraphrase/pagination/granted-tool rows must leave policy without allow.
 
-    approve_ignored_by_runtime uses escalation tools (policy approve), which is
-    the point of that slice — excluded here.
+    Marker-list misses are still asserted in test_adversarial_synonyms_do_not_copy_matched_markers.
     """
     pol = PolicyEngine(load_agents(), enforce_rate_limit=False)
     rows = [
@@ -71,14 +70,12 @@ def test_adversarial_paraphrases_miss_keyword_policy():
             "granted_tool_misuse",
         }
     ]
-    missed = []
+    allowed = []
     for row in rows:
         d = pol.evaluate(row)
-        if d.verdict == "allow" and d.rule_id == "clean_allow":
-            missed.append(row["id"])
-    assert missed, "expected keyword-miss paraphrases; regenerate if policy swallowed them"
-    # Document the miss set; catching some is fine, catching none of the corpus is the design.
-    assert len(missed) >= 30, f"too few keyword misses remain: {missed}"
+        if d.verdict == "allow":
+            allowed.append(f"{row['id']} rule={d.rule_id}")
+    assert not allowed, "FN patterns still clean_allow:\n" + "\n".join(allowed)
 
 
 def test_adversarial_synonyms_do_not_copy_matched_markers():

@@ -24,7 +24,14 @@ from src.metrics import (
     fail_closed_enabled,
 )
 from src.models import ClassifierResult, ToolRequest
-from src.policy import load_agents
+from src.policy import (
+    _blob,
+    _exfil_sink,
+    _granted_tool_misuse,
+    _injection_paraphrase,
+    _pagination_walk,
+    load_agents,
+)
 
 load_dotenv()
 
@@ -142,6 +149,30 @@ def _validate(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _local_classify(request: ToolRequest, agent: dict[str, Any]) -> dict[str, Any]:
+    request_blob = _blob(request)
+    args_l = {str(k).lower(): v for k, v in request.args.items()}
+    if _injection_paraphrase(request_blob):
+        return {
+            "verdict": "deny",
+            "category": "prompt_injection",
+            "confidence": 0.86,
+            "reasoning": "Untrusted text addresses the agent with an instruction hijack rather than describing a business record.",
+        }
+    if _exfil_sink(args_l) or _pagination_walk(request, args_l, request_blob):
+        return {
+            "verdict": "deny",
+            "category": "data_exfiltration",
+            "confidence": 0.84,
+            "reasoning": "Arguments look like a bulk copy or an outbound sink, not a single in-scope record.",
+        }
+    if _granted_tool_misuse(request, args_l, request_blob):
+        return {
+            "verdict": "deny",
+            "category": "scope_creep",
+            "confidence": 0.8,
+            "reasoning": "The granted tool is being aimed at a job this agent was not registered to perform.",
+        }
+
     blob = " ".join(
         [
             request.session_context,
@@ -150,7 +181,6 @@ def _local_classify(request: ToolRequest, agent: dict[str, Any]) -> dict[str, An
             agent.get("declared_purpose") or "",
         ]
     ).lower()
-
     injection = (
         "ignore previous",
         "ignore all previous",
