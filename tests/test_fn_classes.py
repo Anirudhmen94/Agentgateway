@@ -20,6 +20,7 @@ OPEN_ADVERSARIAL_PATTERNS = {
     "paraphrase_injection",
     "pagination_exfil",
     "paraphrase_exfil",
+    "granted_tool_misuse",
 }
 
 
@@ -38,6 +39,27 @@ def test_closed_fn_class_eval_142_176_182_must_not_allow(eid):
         f"(layer={decision.deciding_layer} rule={decision.rule_id})."
     )
     assert decision.execution_allowed is False
+
+
+@pytest.mark.parametrize("pattern", sorted(OPEN_ADVERSARIAL_PATTERNS))
+def test_open_fn_class_by_pattern_must_not_allow(pattern):
+    """Each known FN class fails on its own (no xfail, no blended green)."""
+    clear_revocations()
+    policy = PolicyEngine(load_agents(), enforce_rate_limit=False)
+    rows = [r for r in _adv_rows() if r["pattern"] == pattern]
+    assert rows, f"adversarial pattern {pattern} missing"
+    allowed: list[str] = []
+    for row in rows:
+        d = handle(row, use_cache=False, audit=False, policy=policy)
+        if d.verdict == "allow":
+            allowed.append(
+                f"{row['id']} gold={row['label']} pattern={row['pattern']} "
+                f"rule={d.rule_id} layer={d.deciding_layer}"
+            )
+    assert not allowed, (
+        f"FN class {pattern} still allows (keyword/policy miss). "
+        "This is a P1 fail, not a soft green:\n" + "\n".join(allowed)
+    )
 
 
 def test_open_fn_class_paraphrase_injection_bulk_must_not_allow():

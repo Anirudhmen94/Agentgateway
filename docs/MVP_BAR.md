@@ -26,7 +26,7 @@ This bar is for the locked prototype on `cursor/agent-trust-gateway-e038`. It do
 
 `eval-142`, `eval-176`, `eval-182` must not `allow`. Gold labels are human (`scope_creep`, `data_exfiltration`, `data_exfiltration`). Policy `clean_allow` that skips the classifier on these rows is a fail.
 
-P1 open class (fail loud, no xfail): gold-positive rows in `data/eval_adversarial.jsonl` with `paraphrase_scope`, `paraphrase_injection`, `pagination_exfil`, or `paraphrase_exfil` must not `allow`. Keyword `clean_allow` on those rows is a fail of paraphrase hardening, not a heuristic 97% green.
+P1 open class (fail loud, no xfail): gold-positive rows in `data/eval_adversarial.jsonl` with `paraphrase_scope`, `paraphrase_injection`, `pagination_exfil`, `paraphrase_exfil`, or `granted_tool_misuse` must not `allow`. Keyword `clean_allow` on those rows is a fail of paraphrase hardening, not a heuristic 97% green. Pytest splits those classes (`test_open_fn_class_by_pattern_must_not_allow`) so one catch cannot green the rest.
 
 ## Adversarial coverage (required file, not a fake 100%)
 
@@ -49,7 +49,7 @@ If pytest is red, the MVP is red. Do not relabel failures as expected.
 
 ## Current pytest (honest)
 
-`python3 -m pytest -q` after Backend P0 + quotas (`a691f21`) + P1 adversarial expansion: **68 passed, 1 failed** (no xfail). The failure is the open FN class: paraphrase/injection/bulk adversarial rows still `allow`. That is a P1 red, not a heuristic green.
+`python3 -m pytest -q` after Backend P0 + quotas (`a691f21`) + P1 paraphrase expansion: expect **open FN class failures** (parametrized by pattern plus the aggregate list). Those reds are the bar. Do not relabel them as expected or xfail. Closed classes (`eval-142` / `176` / `182`) and quota-order QA must stay green.
 
 - `GET /health` liveness and `GET /ready` readiness (distinct bodies; ready is not a 404)
 - missing/wrong `Authorization: Bearer` on `/v1/check` and `/v1/revoke*` is 401; optional `X-Gateway-Token` alias if present

@@ -1,4 +1,8 @@
-"""QA lock: revoke → quota → classifier. Do not rewrite Backend quota code."""
+"""QA lock: revoke → quota → classifier.
+
+Asserts live Backend order and deny-on-exceed. Does not rewrite
+`src/quota.py` or `tests/test_quota.py`.
+"""
 
 from __future__ import annotations
 

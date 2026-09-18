@@ -5,13 +5,23 @@ from __future__ import annotations
 import json
 from collections import Counter
 
-from src.policy import PolicyEngine, load_agents
+from src.policy import (
+    EXFIL_KEYS,
+    INJECTION_MARKERS,
+    PIGGYBACK_KEY,
+    SECRET_KEYS,
+    SENSITIVE_FIELD_TOKENS,
+    PolicyEngine,
+    load_agents,
+)
 from tests.helpers import ADVERSARIAL_SET, ROOT
 
 REQUIRED_PATTERNS = {
     "paraphrase_scope",
     "paraphrase_injection",
     "pagination_exfil",
+    "paraphrase_exfil",
+    "granted_tool_misuse",
     "approve_ignored_by_runtime",
 }
 
@@ -53,7 +63,13 @@ def test_adversarial_paraphrases_miss_keyword_policy():
     rows = [
         r
         for r in _rows()
-        if r["pattern"] in {"paraphrase_scope", "paraphrase_injection", "pagination_exfil", "paraphrase_exfil"}
+        if r["pattern"] in {
+            "paraphrase_scope",
+            "paraphrase_injection",
+            "pagination_exfil",
+            "paraphrase_exfil",
+            "granted_tool_misuse",
+        }
     ]
     missed = []
     for row in rows:
@@ -62,7 +78,30 @@ def test_adversarial_paraphrases_miss_keyword_policy():
             missed.append(row["id"])
     assert missed, "expected keyword-miss paraphrases; regenerate if policy swallowed them"
     # Document the miss set; catching some is fine, catching none of the corpus is the design.
-    assert len(missed) >= 20, f"too few keyword misses remain: {missed}"
+    assert len(missed) >= 30, f"too few keyword misses remain: {missed}"
+
+
+def test_adversarial_synonyms_do_not_copy_matched_markers():
+    """P1: paraphrases must not reuse strings the keyword policy already matches."""
+    skip = {"approve_ignored_by_runtime"}
+    rows = [r for r in _rows() if r["pattern"] not in skip]
+    copied: list[str] = []
+    for row in rows:
+        blob = " ".join(
+            [
+                row.get("session_context") or "",
+                json.dumps(row.get("args") or {}, ensure_ascii=False),
+            ]
+        ).lower()
+        keys = [str(k).lower() for k in (row.get("args") or {})]
+        hits = [m for m in INJECTION_MARKERS if m in blob]
+        hits += [k for k in EXFIL_KEYS if k in keys or k in blob]
+        hits += [t for t in SENSITIVE_FIELD_TOKENS if t in blob]
+        hits += [s for s in SECRET_KEYS if any(s in k for k in keys)]
+        hits += [k for k in keys if PIGGYBACK_KEY.search(k)]
+        if hits:
+            copied.append(f"{row['id']} {sorted(set(hits))}")
+    assert not copied, "adversarial rows copied already-matched policy strings:\n" + "\n".join(copied)
 
 
 def test_adversarial_approve_ignored_rows_are_pending_not_allow():
