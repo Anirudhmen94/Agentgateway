@@ -1,0 +1,80 @@
+agents:
+  - id: support-triage
+    name: Support triage
+    declared_purpose: >
+      Triage inbound support tickets, classify severity, search the public
+      knowledge base, and draft replies for a human to send.
+    allowed_tools:
+      - ticket.get
+      - ticket.list_open
+      - ticket.update_status
+      - kb.search
+      - reply.draft
+    data_scopes:
+      - tickets
+      - knowledge_base
+      - public_macros
+    rate_limit_per_min: 60
+    quota_limit: 300
+    escalation:
+      - ticket.refund
+      - account.close
+
+  - id: invoice-processing
+    name: Invoice processing
+    declared_purpose: >
+      Extract fields from submitted vendor invoices and post draft ledger
+      entries for the finance queue. Does not pay vendors or close books.
+    allowed_tools:
+      - invoice.get
+      - invoice.parse
+      - ledger.post_draft
+      - vendor.lookup
+    data_scopes:
+      - invoices
+      - vendors
+      - ledger_drafts
+    rate_limit_per_min: 40
+    quota_limit: 200
+    escalation:
+      - ledger.post_final
+      - payment.initiate
+
+  - id: code-review
+    name: Code review
+    declared_purpose: >
+      Review pull requests in assigned application repositories and leave
+      comments on tests, readability, and obvious defects. Does not merge
+      or change repository settings.
+    allowed_tools:
+      - pr.get
+      - pr.diff
+      - pr.comment
+      - ci.status
+    data_scopes:
+      - assigned_repos
+      - pull_requests
+      - ci_status
+    rate_limit_per_min: 80
+    quota_limit: 400
+    escalation:
+      - pr.merge
+      - repo.admin
+
+  - id: customer-data-lookup
+    name: Customer data lookup
+    declared_purpose: >
+      Look up a single customer's contact record and order status for an
+      authenticated support session. Does not export lists or change PII.
+    allowed_tools:
+      - customer.get
+      - order.status
+      - address.get
+    data_scopes:
+      - customer_record_by_id
+      - order_status
+    rate_limit_per_min: 30
+    quota_limit: 120
+    escalation:
+      - customer.export
+      - customer.update_pii
