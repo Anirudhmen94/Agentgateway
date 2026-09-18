@@ -1,6 +1,16 @@
 # Agent Trust Gateway — runtime contract (v1)
 
-This is the contract a tool runtime must honor. Verdict strings alone are not enough.
+This is the contract a tool runtime must honor. Verdict strings alone are not enough. This is a **prototype**, not a production-complete control plane.
+
+## Evaluation order
+
+On `POST /v1/check` / `handle()`: **revoke → quota/policy → classifier**.
+
+1. **Revoke.** A revoked agent is `agent_revoked` before quota consume and before any model call. Revoke does not consume a quota slot.
+2. **Quota / deterministic policy.** Request-count session quota, then policy signals (including P2 FN-class paraphrase/pagination/sink/purpose denies). Quota is never applied after a model call. Unknown agents are `unknown_agent` and do not consume quota.
+3. **Classifier.** Only policy `undecided` rows. grok-4.6 only when `XAI_API_KEY` is set; otherwise `local-fallback`. That fallback is **not** grok quality.
+
+Known adversarial FN-class rows must not `allow`. They are denied in this path **before grok** (policy deny; `adv-006` is policy `undecided` then local classifier deny).
 
 ## Execution gate
 
@@ -14,7 +24,7 @@ This is the contract a tool runtime must honor. Verdict strings alone are not en
 
 Audit SSE events (`event: audit`) include `reason` and `confidence` when those values exist on the decision. `confidence` is omitted as JSON `null` only when the gateway genuinely has no score — it is never invented.
 
-A runtime that executes on `approve` is non-compliant, even if a human later would have said yes.
+A runtime that executes on `approve` is non-compliant, even if a human later would have said yes. The gateway cannot stop a worker that ignores `pending`.
 
 ## HTTP demo API
 
@@ -38,15 +48,13 @@ Open (demo UI): `GET /`, `GET /health` (liveness), `GET /ready` (readiness: agen
 
 ## Per-agent session quotas
 
-Evaluation order on `POST /v1/check`: **revoke first**, then deterministic policy (including session quota), then the classifier. Quota is never applied after a model call.
-
 Each registered agent has `quota_limit` in `config/agents.yaml` (plus `rate_limit_per_min` for the in-process 60s burst cap). The sliding window is `QUOTA_WINDOW_SECONDS` from `.env` (default 3600), or per-agent `quota_window_seconds` when set.
 
-Counts are **request totals per `agent_id`**, not distinct record ids. The store is **file-backed** (`out/quotas.json` or `QUOTA_STORE_PATH`) with the same atomic JSON pattern as revoke, so a demo process restart keeps the window. It is not in-memory-only.
+Counts are **request totals per `agent_id`**, not distinct record ids. Walking unique ids under the request cap with bland session text is still possible. The store is **file-backed** (`out/quotas.json` or `QUOTA_STORE_PATH`) with the same atomic JSON pattern as revoke, so a demo process restart keeps the window. It is not in-memory-only. It is not a replicated production store.
 
 On exceed: `verdict=deny`, `rule_id=quota_exceeded`, `pending=false`, `execution_allowed=false`. Never silent drop, never approve. HTTP `POST /v1/check` and audit JSONL include `quota_limit`, `quota_remaining`, `quota_window_seconds`, and `quota_hit` (`true` only on `quota_exceeded`) when a quota was applied.
 
-A **revoked** agent is `agent_revoked` even when it is under quota. Revoke does not consume a quota slot. Unknown agents are `unknown_agent` and do not consume quota.
+A **revoked** agent is `agent_revoked` even when it is under quota.
 
 ## Bind address
 
@@ -59,3 +67,5 @@ Cache keys hash canonical `agent_id`, `tool`, `args`, `session_context`, plus mo
 ## Fail-closed vs local fallback
 
 `FAIL_CLOSED` (from `.env`): default `0`. When `1` / `true` / `yes` / `on`, a missing xAI key or a failed grok-4.6 call **denies** instead of running the local heuristic. The classifier `model` field is `fail-closed` or `local-fallback` — never grok-4.6. Audit JSONL and stdout `gateway.decision` lines include `backend` (`policy` | `fallback` | `grok` | `fail-closed`).
+
+Split scorecards: `out/scorecard.fallback.md` vs `out/scorecard.grok.md`. Without `XAI_API_KEY`, grok is **NOT RUN**. Do not cite fallback or policy catch as LLM quality.

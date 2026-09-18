@@ -1,8 +1,10 @@
 # Agent Trust Gateway
 
-A control-plane prototype that sits in front of agent tool calls and returns **allow**, **deny**, or **approve** *before* anything executes. Verdict strings are not enough: a runtime must honor `pending` and `execution_allowed` ([`docs/CONTRACT.md`](docs/CONTRACT.md)).
+A control-plane **prototype** that sits in front of agent tool calls and returns **allow**, **deny**, or **approve** *before* anything executes. Verdict strings are not enough: a runtime must honor `pending` and `execution_allowed` ([`docs/CONTRACT.md`](docs/CONTRACT.md)).
 
-This is synthetic demo data and a demo token. It is not a product, not SSO, and not Radware IP. Soft greens fail ([`docs/MVP_BAR.md`](docs/MVP_BAR.md)).
+This is synthetic demo data and a demo token. It is not a product, not SSO, not production-complete, and not Radware IP. Soft greens fail ([`docs/MVP_BAR.md`](docs/MVP_BAR.md)).
+
+**On this branch (`3cae746`):** must-MVP contracts, per-agent **request-count** session quotas, and P2 FN-class **policy** closes. Evaluation order is **revoke → quota/policy → classifier**. After the QA re-score, `python3 -m pytest -q` is **79 passed, 0 failed** (no xfail). grok-4.6 is **NOT RUN** without `XAI_API_KEY` — do not cite heuristic coverage as LLM quality.
 
 ## Real vs stubbed
 
@@ -10,14 +12,25 @@ This is synthetic demo data and a demo token. It is not a product, not SSO, and 
 | --- | --- |
 | Policy engine, revoke-first ordering, durable file revoke (`out/revocations.json`) | Operator SSO / identity |
 | Per-agent request-count session quotas (durable `out/quotas.json`) | Distinct-record-id session quotas |
+| P2 policy signals that deny known adversarial FN classes before grok | Novel paraphrases outside those detectors |
 | HTTP API + live UI, SSE audit, JSONL + stdout decision logs | Operator ACK that later flips `pending` to allow |
 | `Authorization: Bearer <GATEWAY_TOKEN>` from `.env` (401 if missing/wrong) | Tool sandbox / execution runtime |
 | Approve hard gate: `pending: true`, `execution_allowed: false` | Production replicated revoke/quota store |
 | `GET /health` (liveness) vs `GET /ready` (catalog + revoke + quota store) | Customer telemetry |
-| Canonical classifier cache (not request id) | Customer telemetry |
+| Canonical classifier cache (not request id) | Measuring grok-4.6 without a key |
 | grok-4.6 **when** `XAI_API_KEY` is set | Treating local fallback as grok-4.6 |
 
-Without `XAI_API_KEY`, undecided rows use a **local heuristic** (`model=local-fallback`, `backend=fallback`). That is **not** grok-4.6 and **not** model quality. Split scorecards: `out/scorecard.fallback.md` vs `out/scorecard.grok.md` (explicit `NOT RUN` if the API path did not run). Do not cite a blended or 97%-class heuristic rate as grok detection.
+Without `XAI_API_KEY`, undecided rows use a **local heuristic** (`model=local-fallback`, `backend=fallback`). That is **not** grok-4.6 and **not** model quality. Split scorecards only: `out/scorecard.fallback.md` vs `out/scorecard.grok.md` (explicit `NOT RUN` if the API path did not run). Do not cite a blended or 97%-class heuristic rate as grok detection.
+
+## Evaluation order (must)
+
+On every `POST /v1/check` / `handle()`:
+
+1. **Revoke** — `agent_revoked` before quota consume and before the model.
+2. **Quota / deterministic policy** — request-count session quota, then keyword and P2 paraphrase/pagination/sink/purpose signals. Known FN-class rows in `data/eval_adversarial.jsonl` **must not allow**; almost all **deny in policy** (no classifier). `adv-006` is policy `undecided` then **local** classifier deny — still not grok.
+3. **Classifier** — only `undecided` rows. grok-4.6 only with `XAI_API_KEY`; otherwise `local-fallback`.
+
+Quota is never applied after a model call.
 
 ## Runtime contract (must)
 
@@ -81,8 +94,10 @@ A worker that executes on any non-deny string is non-compliant even though the A
 ## Measure (no xfail greens)
 
 ```bash
-python -m pytest -q    # or: make test
+python -m pytest -q    # or: make test   → 79 passed at 3cae746 (re-verified)
 make eval              # split scorecards under out/; grok file is NOT RUN without XAI_API_KEY
 ```
 
-If pytest is red, the MVP is red. Catching adversarial paraphrases with the local heuristic is **not** a ship signal. Remaining gaps: [`docs/RED_TEAM.md`](docs/RED_TEAM.md). Labels: [`data/PROVENANCE.md`](data/PROVENANCE.md).
+If pytest is red, the MVP is red. Catching the current adversarial file with policy/heuristic is **not** a ship signal and **not** grok quality.
+
+Remaining **medium** gaps (not closed): novel paraphrases outside the detectors; request-count quota ≠ distinct record ids; runtimes that ignore `pending`; grok-4.6 not measured. Details: [`docs/RED_TEAM.md`](docs/RED_TEAM.md). Labels: [`data/PROVENANCE.md`](data/PROVENANCE.md).
