@@ -38,11 +38,15 @@ Open (demo UI): `GET /`, `GET /health` (liveness), `GET /ready` (readiness: agen
 
 ## Per-agent session quotas
 
+Evaluation order on `POST /v1/check`: **revoke first**, then deterministic policy (including session quota), then the classifier. Quota is never applied after a model call.
+
 Each registered agent has `quota_limit` in `config/agents.yaml` (plus `rate_limit_per_min` for the in-process 60s burst cap). The sliding window is `QUOTA_WINDOW_SECONDS` from `.env` (default 3600), or per-agent `quota_window_seconds` when set.
 
-Counts are **request totals per `agent_id`**, not distinct record ids. The store is file-backed (`out/quotas.json` or `QUOTA_STORE_PATH`) with the same atomic JSON pattern as revoke, so a demo process restart keeps the window.
+Counts are **request totals per `agent_id`**, not distinct record ids. The store is **file-backed** (`out/quotas.json` or `QUOTA_STORE_PATH`) with the same atomic JSON pattern as revoke, so a demo process restart keeps the window. It is not in-memory-only.
 
-On exceed: `verdict=deny`, `rule_id=quota_exceeded`, `pending=false`, `execution_allowed=false`. Never silent drop. HTTP `POST /v1/check` and audit JSONL include `quota_limit`, `quota_remaining`, and `quota_window_seconds` when a quota was applied. Unknown agents are `unknown_agent` and do not consume quota.
+On exceed: `verdict=deny`, `rule_id=quota_exceeded`, `pending=false`, `execution_allowed=false`. Never silent drop, never approve. HTTP `POST /v1/check` and audit JSONL include `quota_limit`, `quota_remaining`, `quota_window_seconds`, and `quota_hit` (`true` only on `quota_exceeded`) when a quota was applied.
+
+A **revoked** agent is `agent_revoked` even when it is under quota. Revoke does not consume a quota slot. Unknown agents are `unknown_agent` and do not consume quota.
 
 ## Bind address
 

@@ -183,4 +183,5 @@ class Decision:
             "quota_limit": self.quota_limit,
             "quota_remaining": self.quota_remaining,
             "quota_window_seconds": self.quota_window_seconds,
+            "quota_hit": self.rule_id == "quota_exceeded",
         }
