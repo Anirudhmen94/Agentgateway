@@ -49,7 +49,7 @@ If pytest is red, the MVP is red. Do not relabel failures as expected.
 
 ## Current pytest (honest)
 
-`python3 -m pytest -q` after Backend P0 + quotas (`a691f21`) + P1 paraphrase expansion: expect **open FN class failures** (parametrized by pattern plus the aggregate list). Those reds are the bar. Do not relabel them as expected or xfail. Closed classes (`eval-142` / `176` / `182`) and quota-order QA must stay green.
+`python3 -m pytest -q` after Backend P0 + quotas (`a691f21`) + P1 paraphrase expansion (`9d7ec5a`): **69 passed, 6 failed** (no xfail). The failures are open FN classes (parametrized by pattern plus the aggregate list): 46 gold-positive paraphrase/injection/bulk/granted-tool rows still `allow`. That is a P1 red, not a heuristic green. Closed classes (`eval-142` / `176` / `182`) and quota-order QA stay green.
 
 - `GET /health` liveness and `GET /ready` readiness (distinct bodies; ready is not a 404)
 - missing/wrong `Authorization: Bearer` on `/v1/check` and `/v1/revoke*` is 401; optional `X-Gateway-Token` alias if present

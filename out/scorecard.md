@@ -4,8 +4,8 @@
 > Fallback heuristic coverage is `out/scorecard.fallback.md`. grok-4.6 is `out/scorecard.grok.md`.
 
 - Eval: `data/eval_set.jsonl` n=200
-- Git commit: `a691f21`
-- UTC run time: 2026-09-18T10:31:56Z
+- Git commit: `9d7ec5a`
+- UTC run time: 2026-09-18T10:36:33Z
 - Backend mix: `{'policy': 90, 'fallback': 110}`
 - Cache: 110 hits / 0 misses
 
