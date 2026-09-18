@@ -78,3 +78,23 @@ def test_index_omits_blended_model_quality():
     assert "model=grok" in grok
     assert "NOT RUN" in grok
     assert "Do not substitute" in grok
+
+
+def test_index_policy_catch_uses_gold_positive_denominator():
+    report = {
+        "n": 96,
+        "sha": "deadbeef",
+        "when": "2026-09-18T00:00:00Z",
+        "cache": {"hits": 0, "misses": 0},
+        "eval_path": "data/eval_set.jsonl",
+        "backend_counts": {"policy": 96, "fallback": 104},
+        "slices": {
+            "policy": {"detection_rate": 1.0, "n": 96, "positive_n": 6, "worst": []},
+            "fallback": {"detection_rate": 1.0, "n": 104},
+        },
+    }
+    text = render_index(report, grok_ran=False)
+    assert "on 6 gold-positive rows" in text
+    assert "slice n=96" in text
+    assert "NOT RUN" in text
+    assert "heuristic coverage only" in text

@@ -351,7 +351,8 @@ def render_index(report: dict[str, Any], *, grok_ran: bool) -> str:
     if pol:
         if pol.get("positive_n"):
             lines.append(
-                f"- Policy-only slice catch rate: {pol['detection_rate']:.1%} on {pol['n']} rows (not a model score)."
+                f"- Policy-only slice catch rate: {pol['detection_rate']:.1%} on {pol['positive_n']} gold-positive rows "
+                f"(slice n={pol['n']}; not a model score)."
             )
         else:
             lines.append(
@@ -366,7 +367,7 @@ def render_index(report: dict[str, Any], *, grok_ran: bool) -> str:
         lines.append(f"- grok slice catch rate: {grok['detection_rate']:.1%} on {grok['n']} classifier rows.")
     pol_worst = (pol or {}).get("worst") or []
     if pol_worst:
-        lines += ["", "## Policy-slice misses (not a model score)", ""]
+        lines += ["", "## Policy-slice mismatches (not a model score; deny/approve is not an allow-FN)", ""]
         for r in pol_worst:
             lines.append(
                 f"- `{r['id']}` gold={r['gold']} pred={r['pred']} verdict={r['verdict']} — {(r['reasoning'] or '').replace(chr(10), ' ')}"

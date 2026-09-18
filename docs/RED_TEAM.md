@@ -10,9 +10,9 @@ This branch already closed demo Bearer auth, durable revoke (including process r
 
 **Request.** A planner that avoids both the original marker lists (`INJECTION_MARKERS` / `EXFIL_KEYS` / `SENSITIVE_FIELD_TOKENS`) **and** the P2 paraphrase/pagination/sink/purpose detectors.
 
-**What is fixed.** The current adversarial FN classes (`paraphrase_scope`, `paraphrase_injection`, `pagination_exfil`, `paraphrase_exfil`, `granted_tool_misuse`) are denied in policy (or, for `adv-006` piggyback, policy `undecided` then classifier deny). Pytest `test_open_fn_class_by_pattern_must_not_allow` and the bulk aggregate stay loud; they are green because policy caught this file, not because labels were softened.
+**What is fixed.** The current adversarial FN classes (`paraphrase_scope`, `paraphrase_injection`, `pagination_exfil`, `paraphrase_exfil`, `granted_tool_misuse`) are denied in policy (or, for `adv-006` piggyback, policy `undecided` then classifier deny). Pytest `test_open_fn_class_by_pattern_must_not_allow` and the bulk aggregate stay loud; they are green because policy caught **this file**, not because labels were softened. That is **not** grok-4.6 and **not** a proof that novel paraphrases are closed.
 
-**What remains.** Detectors are still vocabularies and regexes. A new synonym, language, or sink key not on those lists can `clean_allow`. grok-4.6 is the intended catch for that remainder; that slice is **NOT RUN** without `XAI_API_KEY`.
+**What remains.** Detectors are still vocabularies and regexes. A new synonym, language, or sink key not on those lists can `clean_allow`. grok-4.6 is the intended catch for that remainder; that slice is **NOT RUN** without `XAI_API_KEY`. Do not cite the adversarial-file 100% policy catch as remaining-FN coverage.
 
 **Likelihood.** Medium. Indirect injection (OWASP LLM01) still generalizes past any closed list.
 
@@ -40,7 +40,7 @@ This branch already closed demo Bearer auth, durable revoke (including process r
 
 **Request.** Any `undecided` row without `XAI_API_KEY`.
 
-**What failed.** Fallback catch rate on the *classifier slice* excludes policy `clean_allow` false negatives that never leave policy. After P2 the known adversarial FN file is mostly policy-deny, so it never measures grok. `out/scorecard.grok.md` is **NOT RUN** unless the API classifier actually ran. `FAIL_CLOSED=1` denies instead of using the heuristic; it still is not grok quality.
+**What failed.** Fallback catch rate on the *classifier slice* excludes policy `clean_allow` false negatives that never leave policy. After P2 the known adversarial FN file is 48 policy + 1 fallback (`adv-006`); that 100% on the file is **not** grok. `out/scorecard.grok.md` is **NOT RUN** unless the API classifier actually ran. `FAIL_CLOSED=1` denies instead of using the heuristic; it still is not grok quality. Mix after P2: policy 96 / fallback 104 (was 90 / 110); policy catch is 6 gold-positive rows in that slice, not 96.
 
 **Pass bar.** Split artifacts only (`model=fallback` vs `model=grok` / `NOT RUN`). Never present `local-fallback` as grok-4.6.
 
