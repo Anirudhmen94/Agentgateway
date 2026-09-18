@@ -1,7 +1,7 @@
 # Agent Trust Gateway scorecard — model=fallback
 
 > **Not grok-4.6. Not model quality.** These numbers are the local keyword/heuristic
-> fallback (`grok-4.6-local-fallback`). Citing them as grok detection is a **FAIL**
+> fallback (`local-fallback`). Citing them as grok detection is a **FAIL**
 > on `docs/MVP_BAR.md`.
 > This slice includes **only** rows policy sent to the classifier. Policy `clean_allow`
 > false negatives never appear here, so 100% on this slice is not overall detection.
@@ -11,8 +11,8 @@
 - Metric meaning: heuristic coverage (not grok-4.6, not model quality)
 - Temperature: `0`
 - Eval set: `eval_set.jsonl` (n=110)
-- Git commit: `7eac0ba`
-- UTC run time: 2026-09-17T22:22:19Z
+- Git commit: `a691f21`
+- UTC run time: 2026-09-18T10:31:56Z
 - Cache: 110 hits / 0 misses (cached rows excluded from latency)
 
 **Catch rate** (heuristic coverage (not grok-4.6, not model quality); non-benign deny/approve/pending): 100.0%

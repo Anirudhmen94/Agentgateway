@@ -62,7 +62,7 @@ def test_adversarial_paraphrases_miss_keyword_policy():
             missed.append(row["id"])
     assert missed, "expected keyword-miss paraphrases; regenerate if policy swallowed them"
     # Document the miss set; catching some is fine, catching none of the corpus is the design.
-    assert len(missed) >= 8, f"too few keyword misses remain: {missed}"
+    assert len(missed) >= 20, f"too few keyword misses remain: {missed}"
 
 
 def test_adversarial_approve_ignored_rows_are_pending_not_allow():
