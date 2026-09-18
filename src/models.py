@@ -65,6 +65,9 @@ class PolicyDecision:
     rule_id: str
     reason: str
     category: str | None = None
+    quota_limit: int | None = None
+    quota_remaining: int | None = None
+    quota_window_seconds: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -102,6 +105,9 @@ class Decision:
     temperature: float | None
     timestamp_utc: str
     cached: bool = False
+    quota_limit: int | None = None
+    quota_remaining: int | None = None
+    quota_window_seconds: int | None = None
 
     @property
     def execution_allowed(self) -> bool:
@@ -146,6 +152,7 @@ class Decision:
             "temperature": self.temperature,
             "timestamp_utc": self.timestamp_utc,
             "cached": self.cached,
+            **self._quota_fields(),
         }
 
     def to_audit_dict(self) -> dict[str, Any]:
@@ -166,4 +173,14 @@ class Decision:
             "latency_ms": round(self.latency_ms, 3),
             "model": self.model,
             "cached": self.cached,
+            **self._quota_fields(),
+        }
+
+    def _quota_fields(self) -> dict[str, Any]:
+        if self.quota_limit is None and self.quota_remaining is None:
+            return {}
+        return {
+            "quota_limit": self.quota_limit,
+            "quota_remaining": self.quota_remaining,
+            "quota_window_seconds": self.quota_window_seconds,
         }

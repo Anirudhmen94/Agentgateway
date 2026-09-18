@@ -9,10 +9,11 @@ This is synthetic demo data and a demo token. It is not a product, not SSO, and 
 | Real (runs in this repo) | Stubbed / not built |
 | --- | --- |
 | Policy engine, revoke-first ordering, durable file revoke (`out/revocations.json`) | Operator SSO / identity |
+| Per-agent request-count session quotas (durable `out/quotas.json`) | Distinct-record-id session quotas |
 | HTTP API + live UI, SSE audit, JSONL + stdout decision logs | Operator ACK that later flips `pending` to allow |
 | `Authorization: Bearer <GATEWAY_TOKEN>` from `.env` (401 if missing/wrong) | Tool sandbox / execution runtime |
-| Approve hard gate: `pending: true`, `execution_allowed: false` | Session-level quotas on distinct record ids |
-| `GET /health` (liveness) vs `GET /ready` (catalog + revoke store) | Production replicated revoke store |
+| Approve hard gate: `pending: true`, `execution_allowed: false` | Production replicated revoke/quota store |
+| `GET /health` (liveness) vs `GET /ready` (catalog + revoke + quota store) | Customer telemetry |
 | Canonical classifier cache (not request id) | Customer telemetry |
 | grok-4.6 **when** `XAI_API_KEY` is set | Treating local fallback as grok-4.6 |
 
@@ -37,7 +38,7 @@ Token comes from `.env` only. Optional alias `X-Gateway-Token` exists; it does n
 Open probes (no token):
 
 - `GET /health` → `{"status":"ok"}` (process up)
-- `GET /ready` → `{"status":"ready","checks":{...}}` (agent catalog + revocation store readable; **not** the same as `/health`)
+- `GET /ready` → `{"status":"ready","checks":{...}}` (agent catalog + revocation store + quota store readable; **not** the same as `/health`)
 
 ## FAIL_CLOSED vs fallback
 

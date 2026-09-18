@@ -1,4 +1,4 @@
-"""Gateway: revoke → policy → classifier, with JSONL audit."""
+"""Gateway: revoke → quota/policy → classifier, with JSONL audit."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from typing import Any, Callable
 from src.classifier import classify
 from src.models import Decision, ToolRequest
 from src.policy import PolicyEngine, get_engine
+from src.quota import reset_store_for_tests as reset_quota_store_for_tests
 from src.revocation import get_store, reset_store_for_tests
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "out"
@@ -74,6 +75,11 @@ def reload_revocation_store() -> None:
     reset_store_for_tests()
 
 
+def reload_quota_store() -> None:
+    """Drop the process-local quota handle so the next call reloads from disk."""
+    reset_quota_store_for_tests()
+
+
 def _append_audit(record: dict[str, Any]) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     line = json.dumps(record, separators=(",", ":"), ensure_ascii=False)
@@ -128,6 +134,11 @@ def handle(
 
     engine = policy or get_engine()
     policy_decision = engine.evaluate(request)
+    quota_kwargs = {
+        "quota_limit": policy_decision.quota_limit,
+        "quota_remaining": policy_decision.quota_remaining,
+        "quota_window_seconds": policy_decision.quota_window_seconds,
+    }
     if policy_decision.verdict != "undecided":
         decision = Decision(
             request_id=request.id,
@@ -144,6 +155,7 @@ def handle(
             model=None,
             temperature=None,
             timestamp_utc=_utc_now(),
+            **quota_kwargs,
         )
         if audit:
             _append_audit(decision.to_audit_dict())
@@ -167,6 +179,7 @@ def handle(
         temperature=result.temperature,
         timestamp_utc=result.timestamp_utc,
         cached=bool(result.cached),
+        **quota_kwargs,
     )
     if audit:
         _append_audit(decision.to_audit_dict())

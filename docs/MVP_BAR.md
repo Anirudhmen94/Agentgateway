@@ -18,6 +18,7 @@ This bar is for the locked prototype on `cursor/agent-trust-gateway-e038`. It do
 | --- | --- | --- |
 | Auth | Primary header is `Authorization: Bearer <GATEWAY_TOKEN>` from `.env`. Missing or wrong **Bearer** on `POST /v1/check` and `POST /v1/revoke*` is **401**. Optional alias `X-Gateway-Token` is accepted if present; it is not a substitute for the Bearer 401 tests. | Open check/revoke; only-alias tests used as the 401 bar; skip/xfail; hardcoded tokens. |
 | Durable revoke | A revoked agent stays denied after a **new process** loads the gateway. | In-memory set that clears on restart. |
+| Session quota | Per-`agent_id` request counts over the configured window. Exceed → **`deny`** / `quota_exceeded` (not approve, not drop). Remaining quota is on the check response and audit JSONL when applied. Counts survive process restart via `QUOTA_STORE_PATH` (same file pattern as revoke). | Soft-allow past the cap; silent drop; treating this as distinct-record-id tracking. |
 | Approve ≠ allow | HTTP `POST /v1/check` on an escalation tool returns `verdict=approve`, **`pending: true`**, `execution_allowed=false`, never `allow`. Audit SSE `event: audit` includes `reason` and `confidence` when available (`confidence` may be JSON `null` only if there is no score). | Soft-mapping approve to allow; omitting `pending`; SSE without reason/confidence keys. |
 | Cache key | Classifier cache is keyed by canonical fields: `agent_id`, `tool`, `args`, `session_context`, model, temperature, system prompt. **Not request id alone.** | Replaying `eval-001` (or any id) with different args serving a cached allow. |
 
@@ -31,8 +32,8 @@ This bar is for the locked prototype on `cursor/agent-trust-gateway-e038`. It do
 
 ## What this bar does not claim
 
-- Production hardening beyond the demo token and durable revoke file.
-- Session-level quotas (still an open red-team item until implemented).
+- Production hardening beyond the demo token, durable revoke file, and durable quota file.
+- Distinct-record-id session quotas (request-count quotas per `agent_id` **are** shipped; walking unique ids under the request cap is still possible).
 - Radware detection logic or customer data.
 
 ## How to measure
@@ -51,6 +52,7 @@ If pytest is red, the MVP is red. Do not relabel failures as expected.
 - `GET /health` liveness and `GET /ready` readiness (distinct bodies; ready is not a 404)
 - missing/wrong `Authorization: Bearer` on `/v1/check` and `/v1/revoke*` is 401; optional `X-Gateway-Token` alias if present
 - durable revoke across a new process (`REVOCATION_STORE_PATH`), including an HTTP process restart
+- per-agent session quota deny on exceed (`quota_exceeded`), remaining on check/audit, durable `QUOTA_STORE_PATH`
 - approve/escalate HTTP path: `pending: true`, never allow; audit SSE exposes `reason` + `confidence`
 - cache key hashes canonical fields, not request id
 - `eval-142`, `eval-176`, `eval-182` must not allow

@@ -44,6 +44,7 @@ def test_ready_is_distinct_from_health():
     assert body != health.json()
     assert body["checks"]["agents"] == "ok"
     assert body["checks"]["revocation_store"] == "ok"
+    assert body["checks"]["quota_store"] == "ok"
     assert "status" in body
 
 

@@ -15,6 +15,7 @@ agents:
       - knowledge_base
       - public_macros
     rate_limit_per_min: 60
+    quota_limit: 300
     escalation:
       - ticket.refund
       - account.close
@@ -34,6 +35,7 @@ agents:
       - vendors
       - ledger_drafts
     rate_limit_per_min: 40
+    quota_limit: 200
     escalation:
       - ledger.post_final
       - payment.initiate
@@ -54,6 +56,7 @@ agents:
       - pull_requests
       - ci_status
     rate_limit_per_min: 80
+    quota_limit: 400
     escalation:
       - pr.merge
       - repo.admin
@@ -71,6 +74,7 @@ agents:
       - customer_record_by_id
       - order_status
     rate_limit_per_min: 30
+    quota_limit: 120
     escalation:
       - customer.export
       - customer.update_pii

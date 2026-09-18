@@ -26,6 +26,8 @@ from src.gateway import (
     unrevoke,
 )
 from src.policy import load_agents
+from src.quota import get_store as get_quota_store
+from src.quota import limit_for_agent, window_for_agent
 from src.revocation import get_store
 
 load_dotenv()
@@ -82,7 +84,7 @@ def health() -> dict[str, str]:
 
 @app.get("/ready")
 def ready() -> dict[str, Any]:
-    """Readiness: revocation store and agent catalog are usable."""
+    """Readiness: revocation store, quota store, and agent catalog are usable."""
     checks: dict[str, str] = {}
     errors: list[str] = []
     try:
@@ -99,6 +101,12 @@ def ready() -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         checks["revocation_store"] = "error"
         errors.append(f"revocation_store: {exc}")
+    try:
+        get_quota_store().all()
+        checks["quota_store"] = "ok"
+    except Exception as exc:  # noqa: BLE001
+        checks["quota_store"] = "error"
+        errors.append(f"quota_store: {exc}")
     if errors:
         raise HTTPException(
             status_code=503,
@@ -122,6 +130,8 @@ def agents() -> dict[str, Any]:
                 "escalation": row.get("escalation") or [],
                 "data_scopes": row.get("data_scopes") or [],
                 "rate_limit_per_min": row.get("rate_limit_per_min"),
+                "quota_limit": limit_for_agent(row),
+                "quota_window_seconds": window_for_agent(row),
                 "revoked": agent_id in revoked,
             }
         )

@@ -11,6 +11,8 @@ from typing import Any
 import yaml
 
 from src.models import PolicyDecision, ToolRequest
+from src.quota import get_store as get_quota_store
+from src.quota import limit_for_agent, window_for_agent
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "agents.yaml"
 
@@ -117,9 +119,18 @@ def _blob(request: ToolRequest) -> str:
 
 
 class PolicyEngine:
-    def __init__(self, agents: dict[str, dict[str, Any]] | None = None, *, enforce_rate_limit: bool = True) -> None:
+    def __init__(
+        self,
+        agents: dict[str, dict[str, Any]] | None = None,
+        *,
+        enforce_rate_limit: bool = True,
+        enforce_quota: bool | None = None,
+    ) -> None:
         self.agents = agents if agents is not None else load_agents()
         self.enforce_rate_limit = enforce_rate_limit
+        # Eval/regression engines already disable rate limits; keep quota off with them
+        # unless a caller opts in. Live gateway keeps both on.
+        self.enforce_quota = enforce_rate_limit if enforce_quota is None else enforce_quota
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._all_tools: set[str] = set()
         for row in self.agents.values():
@@ -138,6 +149,24 @@ class PolicyEngine:
             return True
         window.append(now)
         return False
+
+    def _consume_quota(self, agent_id: str, agent: dict[str, Any]):
+        if not self.enforce_quota:
+            return None
+        limit = limit_for_agent(agent)
+        if limit <= 0:
+            return None
+        window = window_for_agent(agent)
+        return get_quota_store().consume(agent_id, limit, window)
+
+    @staticmethod
+    def _with_quota(decision: PolicyDecision, snap) -> PolicyDecision:
+        if snap is None:
+            return decision
+        decision.quota_limit = snap.limit
+        decision.quota_remaining = snap.remaining
+        decision.quota_window_seconds = snap.window_seconds
+        return decision
 
     def evaluate(self, request: ToolRequest | dict[str, Any]) -> PolicyDecision:
         if not isinstance(request, ToolRequest):
@@ -177,33 +206,57 @@ class PolicyEngine:
                 category="scope_creep",
             )
 
+        quota_snap = self._consume_quota(request.agent_id, agent)
+        if quota_snap is not None and not quota_snap.allowed:
+            return self._with_quota(
+                PolicyDecision(
+                    verdict="deny",
+                    rule_id="quota_exceeded",
+                    reason=(
+                        f"Session quota {quota_snap.limit} per {quota_snap.window_seconds}s "
+                        f"exceeded for {request.agent_id}."
+                    ),
+                    category="scope_creep",
+                ),
+                quota_snap,
+            )
+
         if request.tool not in allowed and request.tool in escalation:
-            return PolicyDecision(
-                verdict="approve",
-                rule_id="escalation_tool",
-                reason=f"Tool {request.tool!r} always requires human approval.",
-                category="scope_creep",
+            return self._with_quota(
+                PolicyDecision(
+                    verdict="approve",
+                    rule_id="escalation_tool",
+                    reason=f"Tool {request.tool!r} always requires human approval.",
+                    category="scope_creep",
+                ),
+                quota_snap,
             )
 
         if self.enforce_rate_limit:
             limit = int(agent.get("rate_limit_per_min") or 60)
             if self._rate_exceeded(request.agent_id, limit):
-                return PolicyDecision(
-                    verdict="deny",
-                    rule_id="rate_limit_exceeded",
-                    reason=f"Rate limit {limit}/min exceeded for {request.agent_id}.",
-                    category="scope_creep",
+                return self._with_quota(
+                    PolicyDecision(
+                        verdict="deny",
+                        rule_id="rate_limit_exceeded",
+                        reason=f"Rate limit {limit}/min exceeded for {request.agent_id}.",
+                        category="scope_creep",
+                    ),
+                    quota_snap,
                 )
 
         blob = _blob(request)
         args_l = {str(k).lower(): v for k, v in request.args.items()}
 
         if any(marker in blob for marker in INJECTION_MARKERS):
-            return PolicyDecision(
-                verdict="undecided",
-                rule_id="injection_markers",
-                reason="Prompt-injection markers present; escalate to classifier.",
-                category="prompt_injection",
+            return self._with_quota(
+                PolicyDecision(
+                    verdict="undecided",
+                    rule_id="injection_markers",
+                    reason="Prompt-injection markers present; escalate to classifier.",
+                    category="prompt_injection",
+                ),
+                quota_snap,
             )
 
         secret_hit = [k for k in args_l if any(s in k for s in SECRET_KEYS)]
@@ -215,42 +268,57 @@ class PolicyEngine:
             )
         )
         if secret_hit or secret_in_values:
-            return PolicyDecision(
-                verdict="undecided",
-                rule_id="credential_signals",
-                reason="Credential-shaped fields or secret material in the call.",
-                category="credential_misuse",
+            return self._with_quota(
+                PolicyDecision(
+                    verdict="undecided",
+                    rule_id="credential_signals",
+                    reason="Credential-shaped fields or secret material in the call.",
+                    category="credential_misuse",
+                ),
+                quota_snap,
             )
 
         if any(k in args_l for k in EXFIL_KEYS):
-            return PolicyDecision(
-                verdict="undecided",
-                rule_id="exfil_destination",
-                reason="Call names an outbound destination or export flag.",
-                category="data_exfiltration",
+            return self._with_quota(
+                PolicyDecision(
+                    verdict="undecided",
+                    rule_id="exfil_destination",
+                    reason="Call names an outbound destination or export flag.",
+                    category="data_exfiltration",
+                ),
+                quota_snap,
             )
         if _sensitive_overcollect(request):
-            return PolicyDecision(
-                verdict="undecided",
-                rule_id="sensitive_field_overcollect",
-                reason="Call requests payment, identity, or HR fields outside a single in-scope lookup.",
-                category="data_exfiltration",
+            return self._with_quota(
+                PolicyDecision(
+                    verdict="undecided",
+                    rule_id="sensitive_field_overcollect",
+                    reason="Call requests payment, identity, or HR fields outside a single in-scope lookup.",
+                    category="data_exfiltration",
+                ),
+                quota_snap,
             )
         if _cross_tool_record_fetch(request):
-            return PolicyDecision(
-                verdict="undecided",
-                rule_id="cross_tool_record_fetch",
-                reason="Granted tool arguments piggyback a record fetch from another system of record.",
-                category="scope_creep",
+            return self._with_quota(
+                PolicyDecision(
+                    verdict="undecided",
+                    rule_id="cross_tool_record_fetch",
+                    reason="Granted tool arguments piggyback a record fetch from another system of record.",
+                    category="scope_creep",
+                ),
+                quota_snap,
             )
         if re.search(r"https?://", blob) and any(
             tok in blob for tok in ("forward", "webhook", "drop", "exfil", "bcc", "send to")
         ):
-            return PolicyDecision(
-                verdict="undecided",
-                rule_id="exfil_url",
-                reason="HTTP destination combined with forwarding language.",
-                category="data_exfiltration",
+            return self._with_quota(
+                PolicyDecision(
+                    verdict="undecided",
+                    rule_id="exfil_url",
+                    reason="HTTP destination combined with forwarding language.",
+                    category="data_exfiltration",
+                ),
+                quota_snap,
             )
 
         for key in BULK_KEYS:
@@ -259,43 +327,58 @@ class PolicyEngine:
             except (TypeError, ValueError):
                 n = 0
             if n and n > 25:
-                return PolicyDecision(
-                    verdict="undecided",
-                    rule_id="bulk_read",
-                    reason="Bulk page size is outside a single-record lookup.",
-                    category="data_exfiltration",
+                return self._with_quota(
+                    PolicyDecision(
+                        verdict="undecided",
+                        rule_id="bulk_read",
+                        reason="Bulk page size is outside a single-record lookup.",
+                        category="data_exfiltration",
+                    ),
+                    quota_snap,
                 )
 
         if request.args.get("customer_id") in ("*", "all") or request.args.get("export") is True:
-            return PolicyDecision(
-                verdict="undecided",
-                rule_id="wildcard_export",
-                reason="Wildcard or export flag on a lookup tool.",
-                category="data_exfiltration",
+            return self._with_quota(
+                PolicyDecision(
+                    verdict="undecided",
+                    rule_id="wildcard_export",
+                    reason="Wildcard or export flag on a lookup tool.",
+                    category="data_exfiltration",
+                ),
+                quota_snap,
             )
 
         ids = request.args.get("customer_ids") or request.args.get("ticket_ids")
         if isinstance(ids, list) and len(ids) > 3:
-            return PolicyDecision(
-                verdict="undecided",
-                rule_id="multi_id_lookup",
-                reason="Multi-id lookup exceeds single-record scope.",
-                category="data_exfiltration",
+            return self._with_quota(
+                PolicyDecision(
+                    verdict="undecided",
+                    rule_id="multi_id_lookup",
+                    reason="Multi-id lookup exceeds single-record scope.",
+                    category="data_exfiltration",
+                ),
+                quota_snap,
             )
 
         if _looks_like_foreign_purpose(request, agent):
-            return PolicyDecision(
-                verdict="undecided",
-                rule_id="purpose_mismatch_signals",
-                reason="Granted tool, but session or args suggest another team's job.",
-                category="scope_creep",
+            return self._with_quota(
+                PolicyDecision(
+                    verdict="undecided",
+                    rule_id="purpose_mismatch_signals",
+                    reason="Granted tool, but session or args suggest another team's job.",
+                    category="scope_creep",
+                ),
+                quota_snap,
             )
 
-        return PolicyDecision(
-            verdict="allow",
-            rule_id="clean_allow",
-            reason="Registered agent, granted tool, no policy signals.",
-            category="benign",
+        return self._with_quota(
+            PolicyDecision(
+                verdict="allow",
+                rule_id="clean_allow",
+                reason="Registered agent, granted tool, no policy signals.",
+                category="benign",
+            ),
+            quota_snap,
         )
 
 

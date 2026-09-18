@@ -34,7 +34,15 @@ Authorization: Bearer <GATEWAY_TOKEN>
 
 `GATEWAY_TOKEN` is read from `.env` only. Optional alias: `X-Gateway-Token: <GATEWAY_TOKEN>`. SSE clients that cannot set headers may pass `?token=` (same value). Missing or wrong token → **401**. An empty `GATEWAY_TOKEN` is fail-closed (also 401).
 
-Open (demo UI): `GET /`, `GET /health` (liveness), `GET /ready` (readiness: agent catalog + revocation store), `GET /v1/agents`.
+Open (demo UI): `GET /`, `GET /health` (liveness), `GET /ready` (readiness: agent catalog + revocation store + quota store), `GET /v1/agents`.
+
+## Per-agent session quotas
+
+Each registered agent has `quota_limit` in `config/agents.yaml` (plus `rate_limit_per_min` for the in-process 60s burst cap). The sliding window is `QUOTA_WINDOW_SECONDS` from `.env` (default 3600), or per-agent `quota_window_seconds` when set.
+
+Counts are **request totals per `agent_id`**, not distinct record ids. The store is file-backed (`out/quotas.json` or `QUOTA_STORE_PATH`) with the same atomic JSON pattern as revoke, so a demo process restart keeps the window.
+
+On exceed: `verdict=deny`, `rule_id=quota_exceeded`, `pending=false`, `execution_allowed=false`. Never silent drop. HTTP `POST /v1/check` and audit JSONL include `quota_limit`, `quota_remaining`, and `quota_window_seconds` when a quota was applied. Unknown agents are `unknown_agent` and do not consume quota.
 
 ## Bind address
 

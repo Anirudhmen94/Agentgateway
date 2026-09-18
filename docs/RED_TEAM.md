@@ -14,13 +14,15 @@ This branch already closed demo Bearer auth, durable revoke (including process r
 
 **Likelihood.** High. Indirect injection (OWASP LLM01) and planner reuse are the default attacker paths.
 
-### 2. High — pagination / per-id loops; no session quotas
+### 2. High — pagination / per-id loops; request-count quota only
 
 **Request.** `ticket.list_open` `limit: 25` + `cursor: page-2`; `customer.get` “lookup 14 of 80”; offset/page under 25 (`adv-012`–`adv-016`).
 
-**What failed.** Detectors are per-call. Threshold-equal pages and single-id loops look like triage.
+**What is fixed.** Per-`agent_id` session quotas (`quota_limit` + `QUOTA_WINDOW_SECONDS` / `quota_window_seconds`) deny with `quota_exceeded` when the request count in the window is exceeded. Durable file store (`out/quotas.json`). Remaining quota is on `/v1/check` and audit JSONL.
 
-**Likelihood.** Medium-high. A compromised planner can page.
+**What remains.** Detectors still do not track **distinct record ids**. Threshold-equal pages and single-id loops that stay under the request cap still look like triage.
+
+**Likelihood.** Medium. A compromised planner can still page until the request quota trips.
 
 **Not shipped.** Session-level quotas on distinct record ids.
 
@@ -56,10 +58,11 @@ This branch already closed demo Bearer auth, durable revoke (including process r
 
 - Unauthenticated `/v1/check` and `/v1/revoke*` → 401 with `GATEWAY_TOKEN` from `.env`.
 - In-memory-only revoke → `out/revocations.json` / `REVOCATION_STORE_PATH` (honored after a new process).
+- Per-agent request-count session quotas → `out/quotas.json` / `QUOTA_STORE_PATH`; exceed is `deny` / `quota_exceeded`.
 - Approve recorded with no execution field → `pending` + `execution_allowed`; UI does not map approve to allow.
 - Cache keyed by request id → canonical `agent_id`, `tool`, `args`, `session_context`, model, temp, prompt.
 - `eval-142`, `eval-176`, `eval-182` must not allow (pytest).
 - Missing `GET /ready` → distinct readiness vs `/health`.
 - Fallback named as grok in live `model` / `backend` fields → `local-fallback` / `fail-closed` / split scorecards.
 
-Do not invent SSO, a product database, session quotas, or Radware logic as consolation features.
+Do not invent SSO, a product database, distinct-record-id quotas, or Radware logic as consolation features.
